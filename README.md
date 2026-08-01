@@ -33,6 +33,16 @@ pnpm.cmd --filter @trading-mentor/web dev
 
 Open `http://localhost:3000`. The API health endpoint is `http://localhost:8000/health`, and the approved dataset endpoint is `http://localhost:8000/api/v1/datasets/btc-usd-1h`.
 
+### Recover the Next.js development cache
+
+After moving or renaming the repository, stop any existing web development server before starting it from the new path. If Turbopack reports a `ChunkLoadError`, `Next.js package not found`, or a missing generated manifest, run:
+
+```powershell
+pnpm.cmd dev:clean
+```
+
+This removes only the generated `apps/web/.next` directory and starts a fresh development server. To clear the cache without starting the server, run `pnpm.cmd clean:next`. Do not run either cache-cleaning command while another Next.js development server is active.
+
 ## Verification
 
 ```powershell
