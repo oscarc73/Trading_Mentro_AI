@@ -1,0 +1,1 @@
+"""Trading Mentor AI services."""
