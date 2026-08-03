@@ -21,20 +21,104 @@ export type Dataset = {
 };
 
 export type Direction = "long" | "short";
+export type OrderSide = "buy" | "sell";
+export type OrderIntent = "open" | "close";
 export type PlaybackState = "ready" | "playing" | "paused" | "completed";
+
+export type ExecutionConfig = {
+  quantity: string;
+  feeBps: string;
+  slippageBps: string;
+};
+
+export type ExecutionAssumptions = ExecutionConfig & {
+  fillPriceRule: "current candle close";
+  spreadBps: "0";
+  leverage: false;
+};
+
+export type Order = {
+  id: string;
+  intent: OrderIntent;
+  side: OrderSide;
+  direction: Direction;
+  quantity: string;
+  submittedAt: string;
+  candleIndex: number;
+  status: "filled";
+};
+
+export type ExecutionFill = {
+  id: string;
+  orderId: string;
+  side: OrderSide;
+  quantity: string;
+  referencePrice: string;
+  executionPrice: string;
+  fee: string;
+  slippageCost: string;
+  timestamp: string;
+  candleIndex: number;
+};
 
 export type Position = {
   direction: Direction;
-  entryPrice: number;
+  quantity: string;
+  entryOrderId: string;
+  entryFillId: string;
+  entryReferencePrice: string;
+  entryPrice: string;
+  entryFee: string;
+  entrySlippageCost: string;
   entryTime: string;
-  quantity: 1;
 };
 
-export type Trade = Position & {
-  exitPrice: number;
+export type Trade = {
+  direction: Direction;
+  quantity: string;
+  entryOrderId: string;
+  entryFillId: string;
+  entryReferencePrice: string;
+  entryPrice: string;
+  entryTime: string;
+  exitOrderId: string;
+  exitFillId: string;
+  exitReferencePrice: string;
+  exitPrice: string;
   exitTime: string;
-  grossPnl: number;
-  returnPercent: number;
+  grossPnl: string;
+  totalFees: string;
+  slippageCost: string;
+  netPnl: string;
+  netReturnPercent: string;
+};
+
+export type TradingErrorCode =
+  | "INVALID_QUANTITY"
+  | "INVALID_FEE_RATE"
+  | "INVALID_SLIPPAGE_RATE"
+  | "INVALID_PRICE"
+  | "POSITION_ALREADY_OPEN"
+  | "NO_OPEN_POSITION"
+  | "SESSION_COMPLETE"
+  | "MISSING_ASSUMPTIONS";
+
+export type TradingError = {
+  code: TradingErrorCode;
+  message: string;
+};
+
+export type EngineEvent = {
+  id: string;
+  sequence: number;
+  type: "position_opened" | "position_closed" | "hold" | "action_rejected";
+  timestamp: string;
+  candleIndex: number;
+  message: string;
+  orderId?: string;
+  fillId?: string;
+  tradeId?: string;
+  errorCode?: TradingErrorCode;
 };
 
 export type SimulationState = {
@@ -43,4 +127,9 @@ export type SimulationState = {
   position: Position | null;
   trade: Trade | null;
   holdCount: number;
+  assumptions: ExecutionAssumptions | null;
+  orders: Order[];
+  fills: ExecutionFill[];
+  events: EngineEvent[];
+  latestError: TradingError | null;
 };

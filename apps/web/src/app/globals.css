@@ -26,7 +26,8 @@ body {
   min-height: 100vh;
 }
 button,
-select {
+select,
+input {
   font: inherit;
 }
 .app-shell {
@@ -233,6 +234,50 @@ h1 em {
 }
 .quote small {
   color: var(--muted);
+}
+.execution-settings {
+  padding: 18px 20px 0;
+}
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.settings-grid label {
+  color: var(--muted);
+  font: 9px var(--font-mono);
+  letter-spacing: 0.04em;
+}
+.settings-grid input {
+  display: block;
+  width: 100%;
+  margin-top: 7px;
+  padding: 9px 8px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: #0c110e;
+  color: var(--text);
+  font: 12px var(--font-mono);
+}
+.settings-grid input:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 1px;
+}
+.settings-grid input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.settings-error,
+.settings-lock {
+  margin: 10px 0 0;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.settings-error {
+  color: var(--red);
+}
+.settings-lock {
+  color: var(--sand);
 }
 .actions {
   display: grid;
@@ -548,6 +593,9 @@ footer {
     min-width: 0;
   }
   .actions {
+    grid-template-columns: 1fr;
+  }
+  .settings-grid {
     grid-template-columns: 1fr;
   }
 }

@@ -2,7 +2,7 @@
 
 ## 1. Status
 
-- **State:** Implemented and verified; pending product-owner acceptance
+- **State:** Accepted by the product owner on 2026-08-02
 - **Stage:** Stage 1 — Functional foundation
 - **Primary owner:** Oscar
 - **Implementation:** Codex
@@ -351,4 +351,4 @@ To be filled by Codex after implementation:
 - Manual verification results: API and web health confirmed; generated fixture loaded; initial 12/32 candles shown; next-candle, long, short, reset, speed, playback, P&L, and explicit 32/32 end state verified in-browser. Desktop and 390 × 844 mobile layouts verified with no console errors or horizontal overflow.
 - Remaining limitations: Sprint 01 intentionally supports one generated fixture, one position, quantity 1, gross P&L, and zero costs only. Starlette emits a non-blocking test-client deprecation warning.
 - Documentation updated: `README.md`, `docs/STATUS.md`, `docs/DECISIONS.md`, `services/api/data/README.md`, and this sprint specification.
-- Review decision: Implementation evidence complete; pending product-owner acceptance.
+- Review decision: Accepted by the product owner on 2026-08-02; Sprint 02 scope approved.

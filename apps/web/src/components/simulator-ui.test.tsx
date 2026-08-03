@@ -30,18 +30,50 @@ const dataset: Dataset = {
 };
 
 describe("Simulator critical flow", () => {
-  it("opens, advances, and closes a long position with a visible result", () => {
+  it("applies configured quantity and costs to a complete long flow", () => {
     render(<Simulator dataset={dataset} />);
     expect(screen.getByTestId("chart").textContent).toBe("12 candles");
 
+    fireEvent.change(screen.getByLabelText("Quantity (BTC)"), {
+      target: { value: "0.5" },
+    });
+    fireEvent.change(screen.getByLabelText("Fee (bps/fill)"), {
+      target: { value: "5" },
+    });
+    fireEvent.change(screen.getByLabelText("Slippage (bps/fill)"), {
+      target: { value: "10" },
+    });
+
     fireEvent.click(screen.getByRole("button", { name: "Buy Open long" }));
-    expect(screen.getByText("LONG · 1 BTC")).toBeTruthy();
+    expect(screen.getByText("LONG · 0.5 BTC")).toBeTruthy();
+    expect(
+      (screen.getByLabelText("Quantity (BTC)") as HTMLInputElement).disabled,
+    ).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "Reveal next candle" }));
     expect(screen.getByTestId("chart").textContent).toBe("13 candles");
 
     fireEvent.click(screen.getByRole("button", { name: "Close position" }));
     expect(screen.getByRole("heading", { name: "Long result" })).toBeTruthy();
-    expect(screen.getByText("$1.00")).toBeTruthy();
+    expect(screen.getByText("$0.33")).toBeTruthy();
+    expect(screen.getByText("$0.11")).toBeTruthy();
+    expect(screen.getByText(/order-1 → fill-1/)).toBeTruthy();
+  });
+
+  it("shows invalid settings and prevents order submission", () => {
+    render(<Simulator dataset={dataset} />);
+    fireEvent.change(screen.getByLabelText("Quantity (BTC)"), {
+      target: { value: "0" },
+    });
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Quantity must be a positive finite decimal value.",
+    );
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Buy Open long",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
   });
 });

@@ -21,3 +21,17 @@
 **Consequences:** Future dependencies with install scripts fail closed until reviewed. The API remains unavailable to arbitrary cross-origin callers.
 
 **Affected files:** `pnpm-workspace.yaml`, `services/api/app/main.py`, API tests.
+
+## 2026-08-02 — Sprint 02 decimal execution and audit model
+
+**Decision:** Use `decimal.js` for trading quantities, prices, fees, slippage, P&L, and return calculations while exposing decimal strings at domain boundaries. Model each synchronous market action as a deterministic `Order` and `ExecutionFill`, capture normalized assumptions at entry, and record ordered engine events.
+
+**Context:** Sprint 01 used JavaScript numbers, fixed quantity `1`, zero costs, and direct position transitions. Sprint 02 requires explicit sizing and costs without introducing pending orders, account balances, leverage, or persistence.
+
+**Alternatives:** Native JavaScript numbers were rejected because fractional quantities and basis-point costs can accumulate binary floating-point drift. Scaled integers were rejected because the simulator does not yet have one fixed instrument precision. Random UUIDs were rejected because session-local sequence identifiers are simpler and reproducible.
+
+**Consequences:** Domain monetary values are decimal strings; conversion to numbers is restricted to chart and display boundaries. Buy fills receive upward slippage and sell fills downward slippage. Gross P&L uses execution prices, net P&L subtracts both fill fees, and slippage is shown separately rather than deducted twice. One synchronous fill per order and one completed trade per reset remain intentional limitations.
+
+**Dependency:** `decimal.js`, recorded in the pnpm lockfile.
+
+**Affected files:** `apps/web/src/domain`, simulator UI and tests, workspace dependency files, README, and Sprint 02 documentation.

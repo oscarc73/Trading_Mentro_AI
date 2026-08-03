@@ -1,6 +1,6 @@
 # Trading Mentor AI
 
-An educational historical-market simulator. Sprint 01 supports deterministic candle replay and one simulated long or short position. All results are hypothetical; no real-money execution is available.
+An educational historical-market simulator. Sprint 02 adds a deterministic execution engine with auditable orders and fills, fractional sizing, configurable costs, and reproducible net P&L. All results are hypothetical; no real-money execution is available.
 
 ## Requirements
 
@@ -53,12 +53,19 @@ pnpm.cmd test
 pnpm.cmd build
 ```
 
-`requirements.txt` and `requirements-dev.txt` declare supported direct-dependency ranges. `requirements.lock` records the exact verified Python environment for reproducible Sprint 01 setup.
+`requirements.txt` and `requirements-dev.txt` declare supported direct-dependency ranges. `requirements.lock` records the exact verified Python environment for reproducible local setup.
 
-## Sprint 01 assumptions
+## Sprint 02 execution assumptions
 
 - Historical generated BTC/USD hourly candles only.
-- Entry and exit fill at the current revealed candle close.
-- Quantity is fixed at 1.
-- Fees and slippage are zero; leverage is unsupported.
-- Gross P&L and return use the formulas in `docs/sprints/SPRINT_01.md`.
+- Immediate market orders reference the current revealed candle close.
+- Quantity is a positive decimal value selected before entry and defaults to `1`.
+- Fees and adverse slippage are configured in basis points per fill and default to `0`.
+- Buy slippage increases the execution price; sell slippage decreases it.
+- Gross P&L uses execution fill prices; net P&L subtracts entry and exit fees.
+- Slippage impact is displayed separately and is not deducted twice.
+- Net return uses absolute entry execution notional as its denominator.
+- Spread remains `0`, leverage is unsupported, and assumptions lock after entry.
+- Orders, fills, positions, trades, and audit events use deterministic session identifiers.
+
+See `docs/sprints/SPRINT_02.md` for formulas, validation rules, scope, and verification evidence.
