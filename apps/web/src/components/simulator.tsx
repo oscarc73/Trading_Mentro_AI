@@ -1,9 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useReducer, useState } from "react";
-import type { Dataset, Direction } from "@/domain/types";
+import type { Dataset, Direction, ExecutionConfig } from "@/domain/types";
 import { initialSimulationState, simulationReducer } from "@/domain/simulation";
-import { ASSUMPTIONS, calculateGrossPnl } from "@/domain/trading";
+import {
+  DEFAULT_EXECUTION_CONFIG,
+  normalizeExecutionConfig,
+  previewPosition,
+  TradingDomainError,
+} from "@/domain/execution";
 import { CandleChart } from "./candle-chart";
 
 const INITIAL_WINDOW = 12;
@@ -18,6 +23,10 @@ const money = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
 
+function formatMoney(value: string | number): string {
+  return money.format(Number(value));
+}
+
 export function Simulator({ dataset }: { dataset: Dataset }) {
   const initialCursor = Math.min(INITIAL_WINDOW, dataset.candles.length) - 1;
   const [state, dispatch] = useReducer(
@@ -25,6 +34,9 @@ export function Simulator({ dataset }: { dataset: Dataset }) {
     initialCursor,
     initialSimulationState,
   );
+  const [config, setConfig] = useState<ExecutionConfig>({
+    ...DEFAULT_EXECUTION_CONFIG,
+  });
   const [speed, setSpeed] = useState(1000);
   const [notice, setNotice] = useState(
     "Practice mode ready. Future candles remain hidden.",
@@ -35,13 +47,24 @@ export function Simulator({ dataset }: { dataset: Dataset }) {
     [dataset.candles, state.cursor],
   );
   const atEnd = state.cursor === dataset.candles.length - 1;
-  const unrealized = state.position
-    ? calculateGrossPnl(
-        state.position.direction,
-        state.position.entryPrice,
-        Number(current.close),
-      )
-    : null;
+  const configError = useMemo(() => {
+    try {
+      normalizeExecutionConfig(config);
+      return null;
+    } catch (cause) {
+      return cause instanceof TradingDomainError
+        ? cause.message
+        : "Execution settings are invalid.";
+    }
+  }, [config]);
+  const preview =
+    state.position && state.assumptions
+      ? previewPosition(state.position, current, state.assumptions)
+      : null;
+
+  useEffect(() => {
+    if (state.latestError) setNotice(state.latestError.message);
+  }, [state.latestError]);
 
   useEffect(() => {
     if (state.playback !== "playing") return;
@@ -53,10 +76,14 @@ export function Simulator({ dataset }: { dataset: Dataset }) {
   }, [state.playback, speed, dataset.candles.length]);
 
   function open(direction: Direction) {
-    dispatch({ type: "OPEN", direction, candle: current });
+    dispatch({ type: "OPEN", direction, candle: current, config });
     setNotice(
-      `${direction === "long" ? "Long" : "Short"} opened at ${money.format(Number(current.close))}.`,
+      `${direction === "long" ? "Long" : "Short"} market order submitted at the current candle.`,
     );
+  }
+
+  function updateConfig(field: keyof ExecutionConfig, value: string) {
+    setConfig((currentConfig) => ({ ...currentConfig, [field]: value.trim() }));
   }
 
   function close() {
@@ -88,7 +115,7 @@ export function Simulator({ dataset }: { dataset: Dataset }) {
           aria-label="Information about simulation assumptions"
           onClick={() =>
             setNotice(
-              "Entries and exits fill at the revealed candle close. Quantity 1, fees $0, slippage $0, no leverage.",
+              `Current-close market fills · Quantity ${state.assumptions?.quantity ?? config.quantity} · Fees ${state.assumptions?.feeBps ?? config.feeBps} bps · Slippage ${state.assumptions?.slippageBps ?? config.slippageBps} bps · No leverage.`,
             )
           }
         >
@@ -98,7 +125,7 @@ export function Simulator({ dataset }: { dataset: Dataset }) {
 
       <section className="hero" id="top">
         <div>
-          <p className="eyebrow">SIMULATION LAB / SESSION 01</p>
+          <p className="eyebrow">SIMULATION LAB / SPRINT 02</p>
           <h1>
             Read the market.
             <br />
@@ -182,27 +209,83 @@ export function Simulator({ dataset }: { dataset: Dataset }) {
                 <strong>{money.format(Number(current.close))}</strong>
                 <small>{new Date(current.timestamp).toLocaleString()}</small>
               </div>
+              <div
+                className="execution-settings"
+                aria-label="Execution settings"
+              >
+                <div className="settings-grid">
+                  <label htmlFor="quantity">
+                    Quantity (BTC)
+                    <input
+                      id="quantity"
+                      inputMode="decimal"
+                      value={config.quantity}
+                      onChange={(event) =>
+                        updateConfig("quantity", event.target.value)
+                      }
+                      disabled={Boolean(state.position)}
+                    />
+                  </label>
+                  <label htmlFor="fee-bps">
+                    Fee (bps/fill)
+                    <input
+                      id="fee-bps"
+                      inputMode="decimal"
+                      value={config.feeBps}
+                      onChange={(event) =>
+                        updateConfig("feeBps", event.target.value)
+                      }
+                      disabled={Boolean(state.position)}
+                    />
+                  </label>
+                  <label htmlFor="slippage-bps">
+                    Slippage (bps/fill)
+                    <input
+                      id="slippage-bps"
+                      inputMode="decimal"
+                      value={config.slippageBps}
+                      onChange={(event) =>
+                        updateConfig("slippageBps", event.target.value)
+                      }
+                      disabled={Boolean(state.position)}
+                    />
+                  </label>
+                </div>
+                {configError && (
+                  <p className="settings-error" role="alert">
+                    {configError}
+                  </p>
+                )}
+                {state.position && (
+                  <p className="settings-lock">
+                    Settings locked for this trade.
+                  </p>
+                )}
+              </div>
               {state.position ? (
                 <div className="position-card">
                   <div>
                     <span>OPEN POSITION</span>
                     <strong>
-                      {state.position.direction.toUpperCase()} · 1 BTC
+                      {state.position.direction.toUpperCase()} ·{" "}
+                      {state.position.quantity} BTC
                     </strong>
                   </div>
                   <dl>
                     <div>
                       <dt>Entry</dt>
-                      <dd>{money.format(state.position.entryPrice)}</dd>
+                      <dd>{formatMoney(state.position.entryPrice)}</dd>
                     </div>
                     <div>
-                      <dt>Unrealized P&amp;L</dt>
+                      <dt>Projected net P&amp;L</dt>
                       <dd
                         className={
-                          (unrealized ?? 0) >= 0 ? "positive" : "negative"
+                          Number(preview?.estimatedNetPnl ?? 0) >= 0
+                            ? "positive"
+                            : "negative"
                         }
                       >
-                        {money.format(unrealized ?? 0)}
+                        {formatMoney(preview?.estimatedNetPnl ?? 0)}
                       </dd>
                     </div>
                   </dl>
@@ -215,14 +298,14 @@ export function Simulator({ dataset }: { dataset: Dataset }) {
                   <button
                     className="buy-button"
                     onClick={() => open("long")}
-                    disabled={atEnd}
+                    disabled={atEnd || Boolean(configError)}
                   >
                     Buy <small>Open long</small>
                   </button>
                   <button
                     className="sell-button"
                     onClick={() => open("short")}
-                    disabled={atEnd}
+                    disabled={atEnd || Boolean(configError)}
                   >
                     Sell <small>Open short</small>
                   </button>
@@ -231,7 +314,7 @@ export function Simulator({ dataset }: { dataset: Dataset }) {
               <button
                 className="hold-button"
                 onClick={() => {
-                  dispatch({ type: "HOLD" });
+                  dispatch({ type: "HOLD", candle: current });
                   setNotice(
                     "Hold recorded. No transaction or P&L change was created.",
                   );
@@ -251,8 +334,11 @@ export function Simulator({ dataset }: { dataset: Dataset }) {
               <div className="assumptions">
                 <span>EXECUTION ASSUMPTIONS</span>
                 <p>
-                  Fill at {ASSUMPTIONS.fillPrice} · Quantity 1 · Fees $0 ·
-                  Slippage $0 · No leverage
+                  Current-close market fills · Quantity{" "}
+                  {state.assumptions?.quantity ?? config.quantity} · Fees{" "}
+                  {state.assumptions?.feeBps ?? config.feeBps} bps · Slippage{" "}
+                  {state.assumptions?.slippageBps ?? config.slippageBps} bps ·
+                  Spread 0 bps · No leverage
                 </p>
               </div>
             </>
@@ -319,7 +405,7 @@ export function Simulator({ dataset }: { dataset: Dataset }) {
         </label>
       </section>
       <footer>
-        <span>Trading Mentor AI · Sprint 01</span>
+        <span>Trading Mentor AI · Sprint 02</span>
         <span>Deterministic simulation · UTC internally</span>
       </footer>
     </div>
@@ -339,11 +425,11 @@ export function Simulator({ dataset }: { dataset: Dataset }) {
         <span>COMPLETED TRADE</span>
         <h3>{trade.direction === "long" ? "Long" : "Short"} result</h3>
         <div
-          className={`result-pnl ${trade.grossPnl >= 0 ? "positive" : "negative"}`}
+          className={`result-pnl ${Number(trade.netPnl) >= 0 ? "positive" : "negative"}`}
         >
-          {money.format(trade.grossPnl)}
+          {formatMoney(trade.netPnl)}
         </div>
-        <p>{trade.returnPercent.toFixed(3)}% gross return</p>
+        <p>{Number(trade.netReturnPercent).toFixed(3)}% net return</p>
         <dl>
           <div>
             <dt>Market</dt>
@@ -353,27 +439,53 @@ export function Simulator({ dataset }: { dataset: Dataset }) {
             </dd>
           </div>
           <div>
-            <dt>Entry</dt>
+            <dt>Entry fill</dt>
             <dd>
-              {money.format(trade.entryPrice)}
+              {formatMoney(trade.entryPrice)}
+              <small>
+                Ref {formatMoney(trade.entryReferencePrice)} ·{" "}
+                {trade.entryOrderId} → {trade.entryFillId}
+              </small>
               <small>{new Date(trade.entryTime).toLocaleString()}</small>
             </dd>
           </div>
           <div>
-            <dt>Exit</dt>
+            <dt>Exit fill</dt>
             <dd>
-              {money.format(trade.exitPrice)}
+              {formatMoney(trade.exitPrice)}
+              <small>
+                Ref {formatMoney(trade.exitReferencePrice)} ·{" "}
+                {trade.exitOrderId} → {trade.exitFillId}
+              </small>
               <small>{new Date(trade.exitTime).toLocaleString()}</small>
             </dd>
           </div>
           <div>
             <dt>Quantity</dt>
-            <dd>1 BTC</dd>
+            <dd>{trade.quantity} BTC</dd>
+          </div>
+          <div>
+            <dt>Gross P&amp;L</dt>
+            <dd>{formatMoney(trade.grossPnl)}</dd>
+          </div>
+          <div>
+            <dt>Total fees</dt>
+            <dd>{formatMoney(trade.totalFees)}</dd>
+          </div>
+          <div>
+            <dt>Slippage impact</dt>
+            <dd>{formatMoney(trade.slippageCost)}</dd>
+          </div>
+          <div>
+            <dt>Audit events</dt>
+            <dd>{state.events.length}</dd>
           </div>
         </dl>
         <p className="result-note">
-          Gross P&amp;L. Return denominator: absolute entry notional. Fees and
-          slippage: $0.
+          Gross P&amp;L uses execution fill prices, so slippage is already
+          embedded. Net P&amp;L subtracts both fill fees. Net return
+          denominator: absolute entry execution notional. Spread 0 bps; no
+          leverage.
         </p>
         <button className="primary-button" onClick={onReset}>
           Start again

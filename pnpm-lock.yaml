@@ -10,6 +10,9 @@ importers:
 
   apps/web:
     dependencies:
+      decimal.js:
+        specifier: ^10.6.0
+        version: 10.6.0
       lightweight-charts:
         specifier: ^5.0.0
         version: 5.2.0
