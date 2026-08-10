@@ -2,12 +2,12 @@
 
 ## 1. Status
 
-- **State:** Implemented and verified; pending product-owner acceptance
+- **State:** Accepted by the product owner on 2026-08-03
 - **Stage:** Stage 1 — Functional foundation
 - **Primary owner:** Oscar
 - **Implementation:** Codex
 - **Depends on:** Sprint 01 — accepted by the product owner on 2026-08-02
-- **Blocks:** Sprint 03
+- **Blocks:** None; Sprint 03 was activated on 2026-08-03
 
 ## 2. Primary outcome
 

@@ -133,3 +133,43 @@ export type SimulationState = {
   events: EngineEvent[];
   latestError: TradingError | null;
 };
+
+export type SessionStatus = "active" | "completed" | "abandoned";
+
+export type SessionCheckpoint = {
+  schemaVersion: 1;
+  revision: number;
+  operationId: string;
+  executionConfig: ExecutionConfig;
+  state: SimulationState;
+};
+
+export type SimulationSession = {
+  schemaVersion: 1;
+  id: string;
+  status: SessionStatus;
+  dataset: Dataset["metadata"];
+  checkpoint: SessionCheckpoint;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+  abandonedAt: string | null;
+};
+
+export type SessionSummary = {
+  schemaVersion: 1;
+  id: string;
+  status: SessionStatus;
+  datasetId: string;
+  asset: string;
+  timeframe: string;
+  cursor: number;
+  candleCount: number;
+  direction: Direction | null;
+  netPnl: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PersistenceState =
+  "loading" | "saving" | "saved" | "failed" | "offline";

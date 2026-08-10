@@ -2,7 +2,7 @@
 
 **Status:** Foundational specification  
 **Roadmap:** 10 initial sprints  
-**Current sprint:** Sprint 02
+**Current sprint:** Sprint 03
 **Primary owner:** Oscar  
 
 ## 1. Product vision

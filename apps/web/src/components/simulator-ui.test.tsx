@@ -1,7 +1,16 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
-import type { Dataset } from "@/domain/types";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Dataset, SimulationSession } from "@/domain/types";
+import { initialSimulationState } from "@/domain/simulation";
 import { Simulator } from "./simulator";
+
+const saveCheckpoint = vi.fn();
+
+vi.mock("@/domain/session-api", () => ({
+  SessionApiError: class SessionApiError extends Error {},
+  saveCheckpoint: (...arguments_: unknown[]) => saveCheckpoint(...arguments_),
+  abandonSession: vi.fn(),
+}));
 
 vi.mock("./candle-chart", () => ({
   CandleChart: ({ candles }: { candles: unknown[] }) => (
@@ -29,9 +38,57 @@ const dataset: Dataset = {
   })),
 };
 
+function makeSession(): SimulationSession {
+  return {
+    schemaVersion: 1,
+    id: "session-test",
+    status: "active",
+    dataset: dataset.metadata,
+    checkpoint: {
+      schemaVersion: 1,
+      revision: 0,
+      operationId: "create-test",
+      executionConfig: { quantity: "1", feeBps: "0", slippageBps: "0" },
+      state: initialSimulationState(11),
+    },
+    createdAt: "2026-08-03T00:00:00Z",
+    updatedAt: "2026-08-03T00:00:00Z",
+    completedAt: null,
+    abandonedAt: null,
+  };
+}
+
+function renderSimulator() {
+  const session = makeSession();
+  saveCheckpoint.mockImplementation(
+    async ({ state, executionConfig, complete }) => ({
+      ...session,
+      status: complete ? "completed" : "active",
+      checkpoint: {
+        ...session.checkpoint,
+        revision: 1,
+        state,
+        executionConfig,
+      },
+    }),
+  );
+  render(
+    <Simulator
+      dataset={dataset}
+      session={session}
+      onSessionChange={vi.fn()}
+      onExit={vi.fn()}
+    />,
+  );
+}
+
 describe("Simulator critical flow", () => {
-  it("applies configured quantity and costs to a complete long flow", () => {
-    render(<Simulator dataset={dataset} />);
+  beforeEach(() => {
+    saveCheckpoint.mockReset();
+  });
+
+  it("applies configured quantity and costs to a complete long flow", async () => {
+    renderSimulator();
     expect(screen.getByTestId("chart").textContent).toBe("12 candles");
 
     fireEvent.change(screen.getByLabelText("Quantity (BTC)"), {
@@ -49,19 +106,26 @@ describe("Simulator critical flow", () => {
     expect(
       (screen.getByLabelText("Quantity (BTC)") as HTMLInputElement).disabled,
     ).toBe(true);
+    await waitFor(() =>
+      expect(screen.getByRole("status").textContent).toContain("Saved locally"),
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Reveal next candle" }));
     expect(screen.getByTestId("chart").textContent).toBe("13 candles");
+    await waitFor(() =>
+      expect(screen.getByRole("status").textContent).toContain("Saved locally"),
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Close position" }));
     expect(screen.getByRole("heading", { name: "Long result" })).toBeTruthy();
     expect(screen.getByText("$0.33")).toBeTruthy();
     expect(screen.getByText("$0.11")).toBeTruthy();
     expect(screen.getByText(/order-1 → fill-1/)).toBeTruthy();
+    await waitFor(() => expect(saveCheckpoint).toHaveBeenCalledTimes(3));
   });
 
   it("shows invalid settings and prevents order submission", () => {
-    render(<Simulator dataset={dataset} />);
+    renderSimulator();
     fireEvent.change(screen.getByLabelText("Quantity (BTC)"), {
       target: { value: "0" },
     });
@@ -75,5 +139,55 @@ describe("Simulator critical flow", () => {
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
+  });
+
+  it("prevents duplicate actions while a checkpoint is saving", () => {
+    saveCheckpoint.mockImplementation(() => new Promise(() => undefined));
+    const session = makeSession();
+    render(
+      <Simulator
+        dataset={dataset}
+        session={session}
+        onSessionChange={vi.fn()}
+        onExit={vi.fn()}
+      />,
+    );
+    const buy = screen.getByRole("button", { name: "Buy Open long" });
+    fireEvent.click(buy);
+    fireEvent.click(buy);
+    expect(saveCheckpoint).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "Buy Open long" })).toBeNull();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Close position",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(screen.getByRole("status").textContent).toContain("Saving");
+  });
+
+  it("keeps local state and retries the same failed save", async () => {
+    saveCheckpoint.mockRejectedValueOnce(new Error("disk unavailable"));
+    const session = makeSession();
+    saveCheckpoint.mockResolvedValueOnce({
+      ...session,
+      checkpoint: { ...session.checkpoint, revision: 1 },
+    });
+    render(
+      <Simulator
+        dataset={dataset}
+        session={session}
+        onSessionChange={vi.fn()}
+        onExit={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Buy Open long" }));
+    expect(await screen.findByText("LONG · 1 BTC")).toBeTruthy();
+    const retry = await screen.findByRole("button", { name: "Retry save" });
+    const firstOperation = saveCheckpoint.mock.calls[0][0].operationId;
+    fireEvent.click(retry);
+    await waitFor(() => expect(saveCheckpoint).toHaveBeenCalledTimes(2));
+    expect(saveCheckpoint.mock.calls[1][0].operationId).toBe(firstOperation);
   });
 });

@@ -30,6 +30,16 @@ select,
 input {
   font: inherit;
 }
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 3px;
+}
+button:disabled {
+  cursor: not-allowed;
+}
 .app-shell {
   width: min(1500px, 100%);
   margin: auto;
@@ -49,6 +59,12 @@ input {
   color: var(--text);
   text-decoration: none;
   font-weight: 600;
+}
+.brand-button {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
 }
 .brand b {
   color: var(--green);
@@ -412,6 +428,192 @@ h1 em {
   padding: 12px 20px;
   font-weight: 700;
 }
+.secondary-button {
+  border: 1px solid var(--line);
+  background: #141a16;
+  color: var(--text);
+  padding: 10px 14px;
+  font-weight: 600;
+}
+.persistence-banner {
+  min-height: 42px;
+  margin-bottom: 16px;
+  padding: 9px 14px;
+  border: 1px solid var(--line);
+  background: #101512;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  color: var(--muted);
+  font: 11px var(--font-mono);
+}
+.persistence-banner.saved {
+  color: var(--green);
+}
+.persistence-banner.failed,
+.persistence-banner.offline,
+.home-error {
+  border-color: #713d3d;
+  color: #ffd0d0;
+}
+.session-home,
+.review-shell {
+  width: min(1180px, 100%);
+  margin: 0 auto;
+  padding: 72px 28px;
+}
+.session-hero {
+  max-width: 760px;
+  padding: 36px 0 72px;
+}
+.session-hero > p:not(.eyebrow),
+.review-header p,
+.empty-history p,
+.session-row p,
+.review-card > p {
+  color: var(--muted);
+  line-height: 1.65;
+}
+.session-hero .primary-button {
+  margin-top: 18px;
+}
+.history-panel,
+.review-card {
+  border: 1px solid var(--line);
+  background: linear-gradient(145deg, #121814, #0d110f);
+}
+.history-heading,
+.review-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+}
+.history-heading {
+  padding: 22px;
+  border-bottom: 1px solid var(--line);
+}
+.history-heading h2,
+.review-card h2 {
+  margin: 7px 0 0;
+}
+.empty-history {
+  padding: 48px 22px;
+  text-align: center;
+}
+.session-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 22px;
+  border-top: 1px solid var(--line);
+}
+.session-row:first-child {
+  border-top: 0;
+}
+.session-row h3 {
+  margin: 10px 0 5px;
+}
+.session-row p {
+  margin: 0;
+  text-transform: capitalize;
+}
+.session-status {
+  display: inline-block;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  padding: 4px 8px;
+  font: 9px var(--font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.session-status.active {
+  color: var(--green);
+  border-color: #337451;
+}
+.session-status.completed {
+  color: var(--sand);
+}
+.session-dates {
+  display: flex;
+  flex-direction: column;
+  align-items: end;
+  gap: 5px;
+  color: var(--muted);
+  text-align: right;
+}
+.session-dates button {
+  margin-top: 8px;
+}
+.home-error {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid;
+  display: flex;
+  gap: 12px;
+}
+.review-header {
+  margin-bottom: 36px;
+}
+.review-header h1 {
+  font-size: clamp(38px, 5vw, 62px);
+}
+.review-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.review-card {
+  padding: 24px;
+  min-width: 0;
+}
+.review-card dl {
+  margin: 20px 0 0;
+}
+.review-card dl > div {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.35fr) minmax(0, 1fr);
+  gap: 14px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.review-card dt {
+  color: var(--muted);
+}
+.review-card dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.review-wide {
+  margin-top: 16px;
+}
+.audit-list,
+.timeline {
+  margin: 20px 0 0;
+  padding: 0;
+}
+.audit-row,
+.timeline li {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+.audit-row strong,
+.timeline strong {
+  color: var(--text);
+}
+.timeline li {
+  grid-template-columns: minmax(160px, 0.5fr) minmax(0, 1fr) minmax(
+      170px,
+      0.5fr
+    );
+}
 .result-card .primary-button {
   width: 100%;
 }
@@ -597,5 +799,38 @@ footer {
   }
   .settings-grid {
     grid-template-columns: 1fr;
+  }
+  .session-home,
+  .review-shell {
+    padding: 36px 12px;
+  }
+  .session-hero {
+    padding: 24px 0 46px;
+  }
+  .history-heading,
+  .review-header,
+  .session-row,
+  .home-error {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .session-dates {
+    align-items: start;
+    text-align: left;
+  }
+  .review-grid {
+    grid-template-columns: 1fr;
+  }
+  .review-card dl > div,
+  .audit-row,
+  .timeline li {
+    grid-template-columns: 1fr;
+  }
+  .review-card dd {
+    text-align: left;
+  }
+  .persistence-banner {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

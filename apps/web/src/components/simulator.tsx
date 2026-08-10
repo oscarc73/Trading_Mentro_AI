@@ -1,17 +1,28 @@
 "use client";
 
-import { useEffect, useMemo, useReducer, useState } from "react";
-import type { Dataset, Direction, ExecutionConfig } from "@/domain/types";
-import { initialSimulationState, simulationReducer } from "@/domain/simulation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type {
+  Dataset,
+  Direction,
+  ExecutionConfig,
+  PersistenceState,
+  SimulationSession,
+  SimulationState,
+} from "@/domain/types";
+import { simulationReducer, type SimulationAction } from "@/domain/simulation";
 import {
-  DEFAULT_EXECUTION_CONFIG,
+  abandonSession,
+  saveCheckpoint,
+  SessionApiError,
+} from "@/domain/session-api";
+import {
   normalizeExecutionConfig,
   previewPosition,
   TradingDomainError,
 } from "@/domain/execution";
 import { CandleChart } from "./candle-chart";
+import { ResultCard } from "./result-card";
 
-const INITIAL_WINDOW = 12;
 const SPEEDS = [
   { label: "0.5×", ms: 2000 },
   { label: "1×", ms: 1000 },
@@ -27,19 +38,37 @@ function formatMoney(value: string | number): string {
   return money.format(Number(value));
 }
 
-export function Simulator({ dataset }: { dataset: Dataset }) {
-  const initialCursor = Math.min(INITIAL_WINDOW, dataset.candles.length) - 1;
-  const [state, dispatch] = useReducer(
-    simulationReducer,
-    initialCursor,
-    initialSimulationState,
-  );
+type PendingSave = {
+  state: SimulationState;
+  config: ExecutionConfig;
+  operationId: string;
+  complete: boolean;
+};
+
+function operationId(): string {
+  return `action-${crypto.randomUUID()}`;
+}
+
+export function Simulator({
+  dataset,
+  session,
+  onSessionChange,
+  onExit,
+}: {
+  dataset: Dataset;
+  session: SimulationSession;
+  onSessionChange: (session: SimulationSession) => void;
+  onExit: () => void;
+}) {
+  const [state, setState] = useState(session.checkpoint.state);
   const [config, setConfig] = useState<ExecutionConfig>({
-    ...DEFAULT_EXECUTION_CONFIG,
+    ...session.checkpoint.executionConfig,
   });
   const [speed, setSpeed] = useState(1000);
+  const [persistence, setPersistence] = useState<PersistenceState>("saved");
+  const [pendingSave, setPendingSave] = useState<PendingSave | null>(null);
   const [notice, setNotice] = useState(
-    "Practice mode ready. Future candles remain hidden.",
+    "Session restored. Future candles remain hidden.",
   );
   const current = dataset.candles[state.cursor];
   const revealed = useMemo(
@@ -62,22 +91,90 @@ export function Simulator({ dataset }: { dataset: Dataset }) {
       ? previewPosition(state.position, current, state.assumptions)
       : null;
 
-  useEffect(() => {
-    if (state.latestError) setNotice(state.latestError.message);
-  }, [state.latestError]);
+  const persist = useCallback(
+    async (pending: PendingSave) => {
+      setPersistence("saving");
+      setPendingSave(pending);
+      const checkpointState = {
+        ...pending.state,
+        playback:
+          pending.state.playback === "playing"
+            ? "paused"
+            : pending.state.playback,
+      } satisfies SimulationState;
+      try {
+        const updated = await saveCheckpoint({
+          session,
+          operationId: pending.operationId,
+          executionConfig: pending.config,
+          state: checkpointState,
+          complete: pending.complete,
+        });
+        setPendingSave(null);
+        setPersistence("saved");
+        onSessionChange(updated);
+      } catch (cause) {
+        setPersistence(
+          cause instanceof SessionApiError && cause.status === null
+            ? "offline"
+            : "failed",
+        );
+        setNotice(
+          cause instanceof Error
+            ? cause.message
+            : "The checkpoint could not be saved.",
+        );
+      }
+    },
+    [onSessionChange, session],
+  );
+
+  const applyAction = useCallback(
+    async (
+      action: SimulationAction,
+      successNotice: string,
+      complete = false,
+    ) => {
+      if (persistence === "saving" || pendingSave) return;
+      const next = simulationReducer(state, action);
+      setState(next);
+      if (next.latestError && next.latestError !== state.latestError) {
+        setNotice(next.latestError.message);
+        return;
+      }
+      setNotice(successNotice);
+      await persist({
+        state: next,
+        config,
+        operationId: operationId(),
+        complete,
+      });
+    },
+    [config, pendingSave, persist, persistence, state],
+  );
 
   useEffect(() => {
-    if (state.playback !== "playing") return;
-    const timer = window.setInterval(
-      () => dispatch({ type: "NEXT", total: dataset.candles.length }),
-      speed,
-    );
-    return () => window.clearInterval(timer);
-  }, [state.playback, speed, dataset.candles.length]);
+    if (state.playback !== "playing" || persistence === "saving" || pendingSave)
+      return;
+    const timer = window.setTimeout(() => {
+      void applyAction(
+        { type: "NEXT", total: dataset.candles.length },
+        "Next historical candle revealed and saved.",
+      );
+    }, speed);
+    return () => window.clearTimeout(timer);
+  }, [
+    applyAction,
+    dataset.candles.length,
+    pendingSave,
+    persistence,
+    speed,
+    state.playback,
+  ]);
 
   function open(direction: Direction) {
-    dispatch({ type: "OPEN", direction, candle: current, config });
-    setNotice(
+    void applyAction(
+      { type: "OPEN", direction, candle: current, config },
       `${direction === "long" ? "Long" : "Short"} market order submitted at the current candle.`,
     );
   }
@@ -87,26 +184,51 @@ export function Simulator({ dataset }: { dataset: Dataset }) {
   }
 
   function close() {
-    dispatch({ type: "CLOSE", candle: current });
-    setNotice("Position closed using the current candle close.");
-  }
-
-  function reset() {
-    dispatch({ type: "RESET", initialCursor });
-    setNotice(
-      "Simulation reset. The same fixture will produce the same result for the same actions.",
+    void applyAction(
+      { type: "CLOSE", candle: current },
+      "Position closed and session completed.",
+      true,
     );
   }
+
+  async function abandon() {
+    if (
+      !window.confirm("Abandon this active session? It will become read-only.")
+    )
+      return;
+    setPersistence("saving");
+    try {
+      await abandonSession(session, operationId());
+      onExit();
+    } catch (cause) {
+      setPersistence(
+        cause instanceof SessionApiError && cause.status === null
+          ? "offline"
+          : "failed",
+      );
+      setNotice(
+        cause instanceof Error
+          ? cause.message
+          : "The session could not be abandoned.",
+      );
+    }
+  }
+
+  const actionsDisabled = persistence === "saving" || Boolean(pendingSave);
 
   return (
     <div className="app-shell">
       <header className="topbar">
-        <a className="brand" href="#top" aria-label="Trading Mentor AI home">
+        <button
+          className="brand brand-button"
+          onClick={onExit}
+          aria-label="Back to saved sessions"
+        >
           <span className="brand-mark">TM</span>
           <span>
             Trading Mentor <b>AI</b>
           </span>
-        </a>
+        </button>
         <div className="mode-chip">
           <i /> Historical practice
         </div>
@@ -125,7 +247,7 @@ export function Simulator({ dataset }: { dataset: Dataset }) {
 
       <section className="hero" id="top">
         <div>
-          <p className="eyebrow">SIMULATION LAB / SPRINT 02</p>
+          <p className="eyebrow">SIMULATION LAB / SPRINT 03</p>
           <h1>
             Read the market.
             <br />
@@ -168,6 +290,36 @@ export function Simulator({ dataset }: { dataset: Dataset }) {
         </p>
       </aside>
 
+      <div
+        className={`persistence-banner ${persistence}`}
+        role={
+          persistence === "failed" || persistence === "offline"
+            ? "alert"
+            : "status"
+        }
+        aria-live="polite"
+      >
+        <span>
+          {persistence === "loading"
+            ? "Loading"
+            : persistence === "saving"
+              ? "Saving…"
+              : persistence === "saved"
+                ? "Saved locally"
+                : persistence === "offline"
+                  ? "Offline · save pending"
+                  : "Save failed"}
+        </span>
+        {pendingSave && persistence !== "saving" && (
+          <button
+            className="secondary-button"
+            onClick={() => void persist(pendingSave)}
+          >
+            Retry save
+          </button>
+        )}
+      </div>
+
       <section className="workspace">
         <div className="chart-panel panel">
           <div className="panel-heading">
@@ -201,7 +353,11 @@ export function Simulator({ dataset }: { dataset: Dataset }) {
             <span className={`status ${state.playback}`}>{state.playback}</span>
           </div>
           {state.trade ? (
-            <ResultCard dataset={dataset} onReset={reset} />
+            <ResultCard
+              dataset={dataset}
+              state={state}
+              savePending={Boolean(pendingSave)}
+            />
           ) : (
             <>
               <div className="quote">
@@ -223,7 +379,7 @@ export function Simulator({ dataset }: { dataset: Dataset }) {
                       onChange={(event) =>
                         updateConfig("quantity", event.target.value)
                       }
-                      disabled={Boolean(state.position)}
+                      disabled={Boolean(state.position) || actionsDisabled}
                     />
                   </label>
                   <label htmlFor="fee-bps">
@@ -235,7 +391,7 @@ export function Simulator({ dataset }: { dataset: Dataset }) {
                       onChange={(event) =>
                         updateConfig("feeBps", event.target.value)
                       }
-                      disabled={Boolean(state.position)}
+                      disabled={Boolean(state.position) || actionsDisabled}
                     />
                   </label>
                   <label htmlFor="slippage-bps">
@@ -247,7 +403,7 @@ export function Simulator({ dataset }: { dataset: Dataset }) {
                       onChange={(event) =>
                         updateConfig("slippageBps", event.target.value)
                       }
-                      disabled={Boolean(state.position)}
+                      disabled={Boolean(state.position) || actionsDisabled}
                     />
                   </label>
                 </div>
@@ -289,7 +445,11 @@ export function Simulator({ dataset }: { dataset: Dataset }) {
                       </dd>
                     </div>
                   </dl>
-                  <button className="close-button" onClick={close}>
+                  <button
+                    className="close-button"
+                    onClick={close}
+                    disabled={actionsDisabled}
+                  >
                     Close position
                   </button>
                 </div>
@@ -298,14 +458,14 @@ export function Simulator({ dataset }: { dataset: Dataset }) {
                   <button
                     className="buy-button"
                     onClick={() => open("long")}
-                    disabled={atEnd || Boolean(configError)}
+                    disabled={atEnd || Boolean(configError) || actionsDisabled}
                   >
                     Buy <small>Open long</small>
                   </button>
                   <button
                     className="sell-button"
                     onClick={() => open("short")}
-                    disabled={atEnd || Boolean(configError)}
+                    disabled={atEnd || Boolean(configError) || actionsDisabled}
                   >
                     Sell <small>Open short</small>
                   </button>
@@ -314,12 +474,12 @@ export function Simulator({ dataset }: { dataset: Dataset }) {
               <button
                 className="hold-button"
                 onClick={() => {
-                  dispatch({ type: "HOLD", candle: current });
-                  setNotice(
+                  void applyAction(
+                    { type: "HOLD", candle: current },
                     "Hold recorded. No transaction or P&L change was created.",
                   );
                 }}
-                disabled={atEnd}
+                disabled={atEnd || actionsDisabled}
               >
                 Hold <span>No trade ({state.holdCount})</span>
               </button>
@@ -348,8 +508,12 @@ export function Simulator({ dataset }: { dataset: Dataset }) {
 
       <section className="controls panel" aria-label="Playback controls">
         <div className="transport">
-          <button onClick={reset} aria-label="Reset simulation">
-            ↺
+          <button
+            onClick={() => void abandon()}
+            aria-label="Abandon session"
+            disabled={actionsDisabled}
+          >
+            ×
           </button>
           <button
             className="play"
@@ -357,19 +521,24 @@ export function Simulator({ dataset }: { dataset: Dataset }) {
               state.playback === "playing" ? "Pause playback" : "Start playback"
             }
             onClick={() =>
-              dispatch({
-                type: state.playback === "playing" ? "PAUSE" : "PLAY",
-              })
+              setState((currentState) =>
+                simulationReducer(currentState, {
+                  type: currentState.playback === "playing" ? "PAUSE" : "PLAY",
+                }),
+              )
             }
-            disabled={atEnd || Boolean(state.trade)}
+            disabled={atEnd || Boolean(state.trade) || actionsDisabled}
           >
             {state.playback === "playing" ? "Ⅱ" : "▶"}
           </button>
           <button
             onClick={() =>
-              dispatch({ type: "NEXT", total: dataset.candles.length })
+              void applyAction(
+                { type: "NEXT", total: dataset.candles.length },
+                "Next historical candle revealed and saved.",
+              )
             }
-            disabled={atEnd || Boolean(state.trade)}
+            disabled={atEnd || Boolean(state.trade) || actionsDisabled}
             aria-label="Reveal next candle"
           >
             ▶|
@@ -405,92 +574,9 @@ export function Simulator({ dataset }: { dataset: Dataset }) {
         </label>
       </section>
       <footer>
-        <span>Trading Mentor AI · Sprint 02</span>
+        <span>Trading Mentor AI · Sprint 03</span>
         <span>Deterministic simulation · UTC internally</span>
       </footer>
     </div>
   );
-
-  function ResultCard({
-    dataset: resultDataset,
-    onReset,
-  }: {
-    dataset: Dataset;
-    onReset: () => void;
-  }) {
-    const trade = state.trade;
-    if (!trade) return null;
-    return (
-      <div className="result-card">
-        <span>COMPLETED TRADE</span>
-        <h3>{trade.direction === "long" ? "Long" : "Short"} result</h3>
-        <div
-          className={`result-pnl ${Number(trade.netPnl) >= 0 ? "positive" : "negative"}`}
-        >
-          {formatMoney(trade.netPnl)}
-        </div>
-        <p>{Number(trade.netReturnPercent).toFixed(3)}% net return</p>
-        <dl>
-          <div>
-            <dt>Market</dt>
-            <dd>
-              {resultDataset.metadata.asset} ·{" "}
-              {resultDataset.metadata.timeframe}
-            </dd>
-          </div>
-          <div>
-            <dt>Entry fill</dt>
-            <dd>
-              {formatMoney(trade.entryPrice)}
-              <small>
-                Ref {formatMoney(trade.entryReferencePrice)} ·{" "}
-                {trade.entryOrderId} → {trade.entryFillId}
-              </small>
-              <small>{new Date(trade.entryTime).toLocaleString()}</small>
-            </dd>
-          </div>
-          <div>
-            <dt>Exit fill</dt>
-            <dd>
-              {formatMoney(trade.exitPrice)}
-              <small>
-                Ref {formatMoney(trade.exitReferencePrice)} ·{" "}
-                {trade.exitOrderId} → {trade.exitFillId}
-              </small>
-              <small>{new Date(trade.exitTime).toLocaleString()}</small>
-            </dd>
-          </div>
-          <div>
-            <dt>Quantity</dt>
-            <dd>{trade.quantity} BTC</dd>
-          </div>
-          <div>
-            <dt>Gross P&amp;L</dt>
-            <dd>{formatMoney(trade.grossPnl)}</dd>
-          </div>
-          <div>
-            <dt>Total fees</dt>
-            <dd>{formatMoney(trade.totalFees)}</dd>
-          </div>
-          <div>
-            <dt>Slippage impact</dt>
-            <dd>{formatMoney(trade.slippageCost)}</dd>
-          </div>
-          <div>
-            <dt>Audit events</dt>
-            <dd>{state.events.length}</dd>
-          </div>
-        </dl>
-        <p className="result-note">
-          Gross P&amp;L uses execution fill prices, so slippage is already
-          embedded. Net P&amp;L subtracts both fill fees. Net return
-          denominator: absolute entry execution notional. Spread 0 bps; no
-          leverage.
-        </p>
-        <button className="primary-button" onClick={onReset}>
-          Start again
-        </button>
-      </div>
-    );
-  }
 }

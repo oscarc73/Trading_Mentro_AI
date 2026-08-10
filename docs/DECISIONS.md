@@ -35,3 +35,15 @@
 **Dependency:** `decimal.js`, recorded in the pnpm lockfile.
 
 **Affected files:** `apps/web/src/domain`, simulator UI and tests, workspace dependency files, README, and Sprint 02 documentation.
+
+## 2026-08-03 — Sprint 03 local session persistence model
+
+**Decision:** Persist versioned simulator checkpoints in local SQLite using one transactional session row plus a unique operation ledger. The browser supplies a stable session identifier, operation identifier, and expected revision. The API validates the complete reducer state and approved dataset before each write or restore. Active sessions may transition only to completed or abandoned; terminal sessions are read-only.
+
+**Context:** Sprint 03 requires exact resume across browser and application restarts without changing the authoritative Sprint 02 TypeScript engine or introducing authentication and cloud infrastructure.
+
+**Alternatives:** Browser-only storage was rejected because it would not survive application data loss consistently or provide an API/repository boundary. Normalized SQL tables for every order, fill, event, and position were rejected as unnecessary duplication of the versioned reducer contract for the current one-trade scope. Server-generated action identifiers were rejected because the client must retry a failed request without duplicating an accepted transition.
+
+**Consequences:** Python's built-in `sqlite3` adds no dependency. Checkpoint JSON preserves decimal strings and deterministic identifiers, while indexed summary columns support recent-session ordering. Optimistic revisions reject stale clients, unique operation identifiers make retries idempotent, and dataset/timestamp validation prevents persisted future-candle references. The local database is single-installation data and is excluded from Git.
+
+**Affected files:** Session domain contracts and client API, simulator/session/review UI, FastAPI models/routes/repository/tests, `.gitignore`, README, and Sprint 03 documentation.

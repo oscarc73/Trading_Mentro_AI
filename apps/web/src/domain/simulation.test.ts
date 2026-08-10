@@ -129,4 +129,22 @@ describe("simulation reducer", () => {
     }
     expect(run()).toEqual(run());
   });
+
+  it("continues deterministic identifiers from a restored checkpoint", () => {
+    const restored = simulationReducer(initialSimulationState(1), {
+      type: "OPEN",
+      direction: "short",
+      candle,
+      config,
+    });
+    const serialized = JSON.parse(JSON.stringify(restored)) as typeof restored;
+    const completed = simulationReducer(serialized, {
+      type: "CLOSE",
+      candle: { ...candle, close: "100", timestamp: "2025-01-01T01:00:00Z" },
+    });
+    expect(completed.orders.at(-1)?.id).toBe("order-2");
+    expect(completed.fills.at(-1)?.id).toBe("fill-2");
+    expect(completed.events.at(-1)?.id).toBe("event-2");
+    expect(completed.trade?.entryPrice).toBe(restored.position?.entryPrice);
+  });
 });
