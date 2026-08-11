@@ -4,6 +4,7 @@ import type {
   SessionSummary,
   SimulationSession,
   SimulationState,
+  StrategyContext,
 } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -59,22 +60,25 @@ export function createSession({
   datasetId,
   operationId,
   executionConfig,
+  strategyContext,
   state,
 }: {
   sessionId: string;
   datasetId: string;
   operationId: string;
   executionConfig: ExecutionConfig;
+  strategyContext: StrategyContext;
   state: SimulationState;
 }): Promise<SimulationSession> {
   return request<SimulationSession>("/sessions", {
     method: "POST",
     body: JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       sessionId,
       datasetId,
       operationId,
       executionConfig,
+      strategyContext,
       state,
     }),
   });
@@ -98,10 +102,13 @@ export function saveCheckpoint({
     {
       method: complete ? "POST" : "PUT",
       body: JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: session.checkpoint.schemaVersion,
         expectedRevision: session.checkpoint.revision,
         operationId,
         executionConfig,
+        ...(session.checkpoint.schemaVersion === 2
+          ? { strategyContext: session.checkpoint.strategyContext }
+          : {}),
         state,
       }),
     },

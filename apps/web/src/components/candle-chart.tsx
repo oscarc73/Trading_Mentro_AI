@@ -5,11 +5,18 @@ import {
   CandlestickSeries,
   ColorType,
   createChart,
+  LineSeries,
   type UTCTimestamp,
 } from "lightweight-charts";
-import type { Candle } from "@/domain/types";
+import type { Candle, MeanReversionPoint } from "@/domain/types";
 
-export function CandleChart({ candles }: { candles: Candle[] }) {
+export function CandleChart({
+  candles,
+  movingAverage,
+}: {
+  candles: Candle[];
+  movingAverage: MeanReversionPoint[];
+}) {
   const host = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -54,15 +61,30 @@ export function CandleChart({ candles }: { candles: Candle[] }) {
         close: Number(candle.close),
       })),
     );
+    const averageSeries = chart.addSeries(LineSeries, {
+      color: "#e7dfca",
+      lineWidth: 2,
+      title: "SMA",
+      priceLineVisible: false,
+      lastValueVisible: true,
+    });
+    averageSeries.setData(
+      movingAverage.map((point) => ({
+        time: Math.floor(
+          new Date(point.timestamp).getTime() / 1000,
+        ) as UTCTimestamp,
+        value: Number(point.movingAverage),
+      })),
+    );
     chart.timeScale().fitContent();
     return () => chart.remove();
-  }, [candles]);
+  }, [candles, movingAverage]);
 
   return (
     <div
       ref={host}
       className="chart"
-      aria-label={`Candlestick chart showing ${candles.length} revealed candles`}
+      aria-label={`Candlestick chart showing ${candles.length} revealed candles and ${movingAverage.length} SMA points`}
     />
   );
 }

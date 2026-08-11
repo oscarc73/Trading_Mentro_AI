@@ -10,7 +10,7 @@
     "start": "next start",
     "format:check": "prettier --check .",
     "lint": "eslint . --max-warnings=0",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit --incremental false",
     "test": "vitest run"
   },
   "dependencies": {

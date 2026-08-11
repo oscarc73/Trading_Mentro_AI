@@ -9,6 +9,12 @@ import {
 } from "@/domain/session-api";
 import { DEFAULT_EXECUTION_CONFIG } from "@/domain/execution";
 import { initialSimulationState } from "@/domain/simulation";
+import {
+  createStrategyContext,
+  DEFAULT_MEAN_REVERSION_CONFIG,
+  MeanReversionDomainError,
+  normalizeMeanReversionConfig,
+} from "@/domain/mean-reversion";
 import type {
   Dataset,
   SessionSummary,
@@ -30,6 +36,13 @@ export function SimulatorLoader() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
+  const [lookback, setLookback] = useState(
+    String(DEFAULT_MEAN_REVERSION_CONFIG.lookback),
+  );
+  const [threshold, setThreshold] = useState(
+    DEFAULT_MEAN_REVERSION_CONFIG.deviationThresholdPercent,
+  );
+  const strategyConfig = getStrategyConfig(lookback, threshold);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -86,7 +99,7 @@ export function SimulatorLoader() {
   }, []);
 
   async function start() {
-    if (!dataset) return;
+    if (!dataset || !strategyConfig.value) return;
     setStarting(true);
     setError(null);
     try {
@@ -97,6 +110,7 @@ export function SimulatorLoader() {
         datasetId: dataset.metadata.id,
         operationId: identifier("create"),
         executionConfig: DEFAULT_EXECUTION_CONFIG,
+        strategyContext: createStrategyContext(strategyConfig.value),
         state: initialSimulationState(initialCursor),
       });
       setSelected(session);
@@ -181,7 +195,7 @@ export function SimulatorLoader() {
   return (
     <main className="session-home">
       <section className="session-hero">
-        <p className="eyebrow">SIMULATION LAB / SPRINT 03</p>
+        <p className="eyebrow">SIMULATION LAB / SPRINT 04</p>
         <h1>
           Practice that <em>remembers.</em>
         </h1>
@@ -189,10 +203,51 @@ export function SimulatorLoader() {
           Start a saved historical session or continue exactly where you left
           off. Future candles remain hidden and every result is hypothetical.
         </p>
+        <fieldset className="strategy-config">
+          <legend>Mean-reversion hypothesis</legend>
+          <p>
+            Compare each revealed close with an unweighted simple moving
+            average. Configuration locks when the session starts.
+          </p>
+          <div className="strategy-config-grid">
+            <label htmlFor="strategy-lookback">
+              Lookback (candles)
+              <input
+                id="strategy-lookback"
+                inputMode="numeric"
+                value={lookback}
+                onChange={(event) => setLookback(event.target.value)}
+                aria-describedby="strategy-config-error"
+              />
+            </label>
+            <label htmlFor="strategy-threshold">
+              Deviation threshold (%)
+              <input
+                id="strategy-threshold"
+                inputMode="decimal"
+                value={threshold}
+                onChange={(event) => setThreshold(event.target.value)}
+                aria-describedby="strategy-config-error"
+              />
+            </label>
+          </div>
+          <p className="formula-preview">
+            deviation % = (close âˆ’ SMA) / SMA Ã— 100
+          </p>
+          {strategyConfig.error && (
+            <p
+              id="strategy-config-error"
+              className="settings-error"
+              role="alert"
+            >
+              {strategyConfig.error}
+            </p>
+          )}
+        </fieldset>
         <button
           className="primary-button"
           onClick={() => void start()}
-          disabled={starting}
+          disabled={starting || Boolean(strategyConfig.error)}
         >
           {starting ? "Starting…" : "Start new session"}
         </button>
@@ -263,4 +318,24 @@ export function SimulatorLoader() {
       )}
     </main>
   );
+}
+
+function getStrategyConfig(lookback: string, threshold: string) {
+  try {
+    return {
+      value: normalizeMeanReversionConfig({
+        lookback: Number(lookback),
+        deviationThresholdPercent: threshold.trim(),
+      }),
+      error: null,
+    };
+  } catch (cause) {
+    return {
+      value: null,
+      error:
+        cause instanceof MeanReversionDomainError
+          ? cause.message
+          : "Strategy configuration is invalid.",
+    };
+  }
 }

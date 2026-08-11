@@ -6,9 +6,9 @@
     "dev": "pnpm --parallel --filter @trading-mentor/web dev",
     "dev:clean": "pnpm --filter @trading-mentor/web dev:clean",
     "clean:next": "pnpm --filter @trading-mentor/web clean:next",
-    "format:check": "pnpm --filter @trading-mentor/web format:check && python -m ruff format --check services/api",
-    "lint": "pnpm --filter @trading-mentor/web lint && python -m ruff check services/api",
-    "typecheck": "pnpm --filter @trading-mentor/web typecheck && python -m mypy services/api/app",
+    "format:check": "pnpm --filter @trading-mentor/web format:check && python -m ruff format --no-cache --check services/api",
+    "lint": "pnpm --filter @trading-mentor/web lint && python -m ruff check --no-cache services/api",
+    "typecheck": "pnpm --filter @trading-mentor/web typecheck && python -m mypy services/api/app --cache-dir=nul",
     "test": "pnpm --filter @trading-mentor/web test && python -m pytest services/api/tests",
     "build": "pnpm --filter @trading-mentor/web build"
   }

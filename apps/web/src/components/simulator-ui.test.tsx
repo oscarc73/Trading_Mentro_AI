@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Dataset, SimulationSession } from "@/domain/types";
 import { initialSimulationState } from "@/domain/simulation";
 import { Simulator } from "./simulator";
+import { SessionReview } from "./session-review";
 
 const saveCheckpoint = vi.fn();
 
@@ -13,8 +14,16 @@ vi.mock("@/domain/session-api", () => ({
 }));
 
 vi.mock("./candle-chart", () => ({
-  CandleChart: ({ candles }: { candles: unknown[] }) => (
-    <div data-testid="chart">{candles.length} candles</div>
+  CandleChart: ({
+    candles,
+    movingAverage,
+  }: {
+    candles: unknown[];
+    movingAverage: unknown[];
+  }) => (
+    <div data-testid="chart">
+      {candles.length} candles Â· {movingAverage.length} SMA points
+    </div>
   ),
 }));
 
@@ -45,10 +54,14 @@ function makeSession(): SimulationSession {
     status: "active",
     dataset: dataset.metadata,
     checkpoint: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       revision: 0,
       operationId: "create-test",
       executionConfig: { quantity: "1", feeBps: "0", slippageBps: "0" },
+      strategyContext: {
+        model: "sma_deviation_v1",
+        config: { lookback: 10, deviationThresholdPercent: "1" },
+      },
       state: initialSimulationState(11),
     },
     createdAt: "2026-08-03T00:00:00Z",
@@ -89,7 +102,13 @@ describe("Simulator critical flow", () => {
 
   it("applies configured quantity and costs to a complete long flow", async () => {
     renderSimulator();
-    expect(screen.getByTestId("chart").textContent).toBe("12 candles");
+    expect(screen.getByTestId("chart").textContent).toBe(
+      "12 candles Â· 3 SMA points",
+    );
+    expect(
+      screen.getByRole("heading", { name: "Above reference" }),
+    ).toBeTruthy();
+    expect(screen.getByText("+4.186%")).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Quantity (BTC)"), {
       target: { value: "0.5" },
@@ -111,7 +130,9 @@ describe("Simulator critical flow", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Reveal next candle" }));
-    expect(screen.getByTestId("chart").textContent).toBe("13 candles");
+    expect(screen.getByTestId("chart").textContent).toBe(
+      "13 candles Â· 4 SMA points",
+    );
     await waitFor(() =>
       expect(screen.getByRole("status").textContent).toContain("Saved locally"),
     );
@@ -189,5 +210,46 @@ describe("Simulator critical flow", () => {
     fireEvent.click(retry);
     await waitFor(() => expect(saveCheckpoint).toHaveBeenCalledTimes(2));
     expect(saveCheckpoint.mock.calls[1][0].operationId).toBe(firstOperation);
+  });
+
+  it("keeps legacy sessions readable without strategy context", () => {
+    const session = makeSession();
+    const legacy: SimulationSession = {
+      ...session,
+      checkpoint: {
+        schemaVersion: 1,
+        revision: session.checkpoint.revision,
+        operationId: session.checkpoint.operationId,
+        executionConfig: session.checkpoint.executionConfig,
+        state: session.checkpoint.state,
+      },
+    };
+    render(
+      <Simulator
+        dataset={dataset}
+        session={legacy}
+        onSessionChange={vi.fn()}
+        onExit={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole("heading", { name: "Context not recorded" }),
+    ).toBeTruthy();
+  });
+
+  it("shows final strategy context in read-only review", () => {
+    const session = makeSession();
+    render(
+      <SessionReview
+        dataset={dataset}
+        session={{ ...session, status: "abandoned" }}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole("heading", { name: "Above reference" }),
+    ).toBeTruthy();
+    expect(screen.getByText("SMA (10 closes)")).toBeTruthy();
+    expect(screen.getByText(/Mean reversion is a hypothesis/)).toBeTruthy();
   });
 });

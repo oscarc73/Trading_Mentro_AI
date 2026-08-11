@@ -104,6 +104,26 @@ class ExecutionAssumptions(ExecutionConfig):
     leverage: Literal[False]
 
 
+class MeanReversionConfig(ApiModel):
+    lookback: int = Field(ge=2, le=100)
+    deviation_threshold_percent: DecimalString = Field(
+        alias="deviationThresholdPercent"
+    )
+
+    @model_validator(mode="after")
+    def validate_threshold(self) -> "MeanReversionConfig":
+        threshold = Decimal(self.deviation_threshold_percent)
+        if threshold <= 0:
+            raise ValueError("deviation threshold must be positive")
+        self.deviation_threshold_percent = format(threshold.normalize(), "f")
+        return self
+
+
+class StrategyContext(ApiModel):
+    model: Literal["sma_deviation_v1"]
+    config: MeanReversionConfig
+
+
 class Order(ApiModel):
     id: str
     intent: Literal["open", "close"]
@@ -220,28 +240,61 @@ class SimulationState(ApiModel):
 
 
 class SessionCheckpoint(ApiModel):
-    schema_version: Literal[1] = Field(alias="schemaVersion")
+    schema_version: Literal[1, 2] = Field(alias="schemaVersion")
     revision: int = Field(ge=0)
     operation_id: str = Field(alias="operationId", min_length=1, max_length=100)
     execution_config: ExecutionConfig = Field(alias="executionConfig")
+    strategy_context: StrategyContext | None = Field(
+        default=None, alias="strategyContext"
+    )
     state: SimulationState
+
+    @model_validator(mode="after")
+    def validate_schema_context(self) -> "SessionCheckpoint":
+        _validate_strategy_schema(self.schema_version, self.strategy_context)
+        return self
 
 
 class CheckpointWrite(ApiModel):
-    schema_version: Literal[1] = Field(alias="schemaVersion")
+    schema_version: Literal[1, 2] = Field(alias="schemaVersion")
     expected_revision: int = Field(alias="expectedRevision", ge=0)
     operation_id: str = Field(alias="operationId", min_length=1, max_length=100)
     execution_config: ExecutionConfig = Field(alias="executionConfig")
+    strategy_context: StrategyContext | None = Field(
+        default=None, alias="strategyContext"
+    )
     state: SimulationState
+
+    @model_validator(mode="after")
+    def validate_schema_context(self) -> "CheckpointWrite":
+        _validate_strategy_schema(self.schema_version, self.strategy_context)
+        return self
 
 
 class SessionCreate(ApiModel):
-    schema_version: Literal[1] = Field(alias="schemaVersion")
+    schema_version: Literal[1, 2] = Field(alias="schemaVersion")
     session_id: str = Field(alias="sessionId", min_length=1, max_length=100)
     dataset_id: str = Field(alias="datasetId")
     operation_id: str = Field(alias="operationId", min_length=1, max_length=100)
     execution_config: ExecutionConfig = Field(alias="executionConfig")
+    strategy_context: StrategyContext | None = Field(
+        default=None, alias="strategyContext"
+    )
     state: SimulationState
+
+    @model_validator(mode="after")
+    def validate_schema_context(self) -> "SessionCreate":
+        _validate_strategy_schema(self.schema_version, self.strategy_context)
+        return self
+
+
+def _validate_strategy_schema(
+    schema_version: int, strategy_context: StrategyContext | None
+) -> None:
+    if schema_version == 2 and strategy_context is None:
+        raise ValueError("schema version 2 requires strategy context")
+    if schema_version == 1 and strategy_context is not None:
+        raise ValueError("schema version 1 cannot include strategy context")
 
 
 class SessionTransition(ApiModel):

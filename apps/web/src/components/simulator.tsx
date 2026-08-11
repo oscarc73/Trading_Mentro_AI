@@ -22,6 +22,8 @@ import {
 } from "@/domain/execution";
 import { CandleChart } from "./candle-chart";
 import { ResultCard } from "./result-card";
+import { calculateMeanReversion } from "@/domain/mean-reversion";
+import { StrategyPanel } from "./strategy-panel";
 
 const SPEEDS = [
   { label: "0.5×", ms: 2000 },
@@ -74,6 +76,16 @@ export function Simulator({
   const revealed = useMemo(
     () => dataset.candles.slice(0, state.cursor + 1),
     [dataset.candles, state.cursor],
+  );
+  const strategyAnalysis = useMemo(
+    () =>
+      session.checkpoint.schemaVersion === 2
+        ? calculateMeanReversion(
+            revealed,
+            session.checkpoint.strategyContext.config,
+          )
+        : null,
+    [revealed, session.checkpoint],
   );
   const atEnd = state.cursor === dataset.candles.length - 1;
   const configError = useMemo(() => {
@@ -335,7 +347,10 @@ export function Simulator({
               revealed
             </div>
           </div>
-          <CandleChart candles={revealed} />
+          <CandleChart
+            candles={revealed}
+            movingAverage={strategyAnalysis?.series ?? []}
+          />
           <div className="chart-footer">
             <span>{new Date(revealed[0].timestamp).toLocaleString()}</span>
             <span>
@@ -505,6 +520,12 @@ export function Simulator({
           )}
         </aside>
       </section>
+
+      <StrategyPanel
+        analysis={strategyAnalysis}
+        currency={dataset.metadata.currency}
+        legacy={session.checkpoint.schemaVersion === 1}
+      />
 
       <section className="controls panel" aria-label="Playback controls">
         <div className="transport">

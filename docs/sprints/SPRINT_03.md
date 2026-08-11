@@ -2,7 +2,7 @@
 
 ## 1. Status
 
-- **State:** Implemented and verified; pending product-owner acceptance
+- **State:** Accepted by the product owner on 2026-08-10
 - **Stage:** Stage 1 — Functional foundation
 - **Primary owner:** Oscar
 - **Implementation:** Codex
@@ -94,3 +94,5 @@ Manual browser evidence:
 ## 9. Definition of done
 
 Sprint 03 is ready for product-owner review only after all acceptance checkboxes above are complete and repository documentation matches verified behavior.
+
+**Review decision:** Accepted by the product owner on 2026-08-10. Sprint 04 planning is authorized; Sprint 04 implementation remains pending scope approval.

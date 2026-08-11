@@ -105,10 +105,11 @@ class SQLiteSessionRepository:
         self._validate_state(request.state, dataset)
         now = _utc_now()
         checkpoint = SessionCheckpoint(
-            schemaVersion=1,
+            schemaVersion=request.schema_version,
             revision=0,
             operationId=request.operation_id,
             executionConfig=request.execution_config,
+            strategyContext=request.strategy_context,
             state=request.state,
         )
         session = SimulationSession(
@@ -260,15 +261,23 @@ class SQLiteSessionRepository:
                 return self._row_to_session(row)
             session = self._row_to_session(row)
             self._require_active(session, request.expected_revision)
+            if (
+                request.schema_version != session.checkpoint.schema_version
+                or request.strategy_context != session.checkpoint.strategy_context
+            ):
+                raise SessionConflictError(
+                    "Strategy configuration is locked for this session."
+                )
             dataset = load_approved_dataset(session.dataset.id)
             self._validate_state(request.state, dataset)
             revision = session.checkpoint.revision + 1
             now = _utc_now()
             checkpoint = SessionCheckpoint(
-                schemaVersion=1,
+                schemaVersion=request.schema_version,
                 revision=revision,
                 operationId=request.operation_id,
                 executionConfig=request.execution_config,
+                strategyContext=request.strategy_context,
                 state=request.state,
             )
             completed_at = (
