@@ -1,6 +1,6 @@
 # Trading Mentor AI
 
-An educational historical-market simulator. Sprint 03 adds reliable local sessions: users can start, save, resume, complete, abandon, and review deterministic practice across browser refreshes and application restarts. All results are hypothetical; no real-money execution is available.
+An educational historical-market simulator. Sprint 04 adds a transparent mean-reversion research model to the reliable local sessions delivered in Sprint 03. Users can inspect a revealed-only simple moving average and exact price deviation without receiving automated trade instructions. All results and hypotheses are hypothetical; no real-money execution is available.
 
 ## Requirements
 
@@ -33,7 +33,22 @@ pnpm.cmd --filter @trading-mentor/web dev
 
 Open `http://localhost:3000`. The API health endpoint is `http://localhost:8000/health`, and the approved dataset endpoint is `http://localhost:8000/api/v1/datasets/btc-usd-1h`.
 
-The API creates `services/api/data/sessions.sqlite3` for local session history. The file is ignored by Git. Sessions belong to this local installation; Sprint 03 does not include accounts or cloud synchronization.
+The API creates `services/api/data/sessions.sqlite3` for local session history. The file is ignored by Git. Sessions belong to this local installation; accounts and cloud synchronization are not included.
+
+## Sprint 04 mean-reversion hypothesis
+
+Before starting a new session, configure a whole-number lookback from `2` to `100` candles and a positive percentage threshold. Defaults are `10` candles and `1%`; values normalize and lock when the session starts.
+
+For revealed close `C` and the unweighted simple moving average `M` of the configured consecutive closes:
+
+```text
+deviation_price   = C - M
+deviation_percent = (C - M) / M * 100
+```
+
+The display classifies deviation below `-T`, inside `-T` through `T`, or above `T` as below, near, or above the recent reference. Equality is near reference. The SMA chart line and analysis series end at the revealed cursor, so hidden future candles are never inputs. Calculations use `decimal.js`; number conversion occurs only at chart and display boundaries.
+
+This close-only model describes relative location. It does not predict reversal probability or timing, recommend an action, create orders, change execution, or backtest performance. Price can continue moving away from the mean.
 
 ### Recover the Next.js development cache
 
@@ -57,9 +72,10 @@ pnpm.cmd build
 
 `requirements.txt` and `requirements-dev.txt` declare supported direct-dependency ranges. `requirements.lock` records the exact verified Python environment for reproducible local setup.
 
-## Sprint 03 session lifecycle
+## Session lifecycle and checkpoint compatibility
 
-- New sessions start at the same initial 12-candle window and receive a versioned checkpoint.
+- New Sprint 04 sessions start at the same initial 12-candle window and receive checkpoint schema version `2` with locked `sma_deviation_v1` configuration.
+- Sprint 03 checkpoint schema version `1` remains readable and shows a clear legacy strategy-context state.
 - Accepted Buy, Sell, Hold, Close, manual advance, and playback advance actions are saved before another action is enabled.
 - Failed saves keep the new local state visible and locked until an idempotent retry succeeds.
 - Active sessions can become completed or abandoned. Both terminal states are read-only.
@@ -78,7 +94,7 @@ POST /api/v1/sessions/{session_id}/complete
 POST /api/v1/sessions/{session_id}/abandon
 ```
 
-See `docs/sprints/SPRINT_03.md` for lifecycle contracts, error mapping, exclusions, and verification evidence.
+See `docs/sprints/SPRINT_03.md` for lifecycle contracts and `docs/sprints/SPRINT_04.md` for the strategy formulas, compatibility contract, exclusions, and verification evidence.
 
 ## Execution assumptions
 

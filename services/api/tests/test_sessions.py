@@ -34,6 +34,19 @@ def create_payload(session_id: str = "session-1") -> dict[str, object]:
     }
 
 
+def strategy_context() -> dict[str, object]:
+    return {
+        "model": "sma_deviation_v1",
+        "config": {"lookback": 10, "deviationThresholdPercent": "1"},
+    }
+
+
+def strategy_create_payload(session_id: str = "strategy-session") -> dict[str, object]:
+    payload = create_payload(session_id)
+    payload.update({"schemaVersion": 2, "strategyContext": strategy_context()})
+    return payload
+
+
 def checkpoint_payload(
     state: dict[str, object], revision: int = 0, operation_id: str = "action-1"
 ) -> dict[str, object]:
@@ -213,6 +226,66 @@ def test_create_retrieve_list_and_survive_repository_restart(tmp_path: Path) -> 
         assert restored.json()["checkpoint"]["state"] == empty_state()
         summaries = restarted.get("/api/v1/sessions").json()
         assert [item["id"] for item in summaries] == ["session-1"]
+
+
+def test_strategy_checkpoint_round_trips_and_legacy_remains_readable(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "sessions.sqlite3"
+    with TestClient(create_app(SQLiteSessionRepository(database))) as client:
+        legacy = client.post("/api/v1/sessions", json=create_payload("legacy"))
+        strategy_payload = strategy_create_payload("strategy")
+        strategy_payload["strategyContext"]["config"][  # type: ignore[index]
+            "deviationThresholdPercent"
+        ] = "1.00"
+        strategy = client.post("/api/v1/sessions", json=strategy_payload)
+        assert legacy.status_code == strategy.status_code == 201
+        assert legacy.json()["checkpoint"]["schemaVersion"] == 1
+        assert (
+            "strategyContext" not in legacy.json()["checkpoint"]
+            or legacy.json()["checkpoint"]["strategyContext"] is None
+        )
+        assert strategy.json()["checkpoint"]["schemaVersion"] == 2
+        assert strategy.json()["checkpoint"]["strategyContext"] == strategy_context()
+
+    with TestClient(create_app(SQLiteSessionRepository(database))) as restarted:
+        restored = restarted.get("/api/v1/sessions/strategy").json()
+        assert restored["checkpoint"]["strategyContext"] == strategy_context()
+
+
+def test_strategy_schema_and_locked_configuration_are_enforced(tmp_path: Path) -> None:
+    with client_for(tmp_path) as client:
+        missing = strategy_create_payload("missing-context")
+        missing.pop("strategyContext")
+        assert client.post("/api/v1/sessions", json=missing).status_code == 422
+
+        unsupported = strategy_create_payload("unsupported")
+        unsupported["strategyContext"] = {
+            "model": "unknown_model",
+            "config": {"lookback": 10, "deviationThresholdPercent": "1"},
+        }
+        assert client.post("/api/v1/sessions", json=unsupported).status_code == 422
+
+        created = client.post(
+            "/api/v1/sessions", json=strategy_create_payload("locked")
+        )
+        payload = checkpoint_payload(empty_state())
+        payload.update(
+            {
+                "schemaVersion": 2,
+                "strategyContext": {
+                    "model": "sma_deviation_v1",
+                    "config": {
+                        "lookback": 20,
+                        "deviationThresholdPercent": "1",
+                    },
+                },
+            }
+        )
+        response = client.put("/api/v1/sessions/locked/checkpoint", json=payload)
+        assert created.status_code == 201
+        assert response.status_code == 409
+        assert "locked" in response.json()["detail"]
 
 
 def test_checkpoint_is_exact_and_retry_is_idempotent(tmp_path: Path) -> None:

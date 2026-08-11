@@ -136,13 +136,61 @@ export type SimulationState = {
 
 export type SessionStatus = "active" | "completed" | "abandoned";
 
-export type SessionCheckpoint = {
+export type MeanReversionConfig = {
+  lookback: number;
+  deviationThresholdPercent: string;
+};
+
+export type MeanReversionState =
+  | "insufficient_data"
+  | "below_reference"
+  | "near_reference"
+  | "above_reference";
+
+export type MeanReversionPoint = {
+  candleIndex: number;
+  timestamp: string;
+  close: string;
+  movingAverage: string;
+  deviationPrice: string;
+  deviationPercent: string;
+  state: Exclude<MeanReversionState, "insufficient_data">;
+};
+
+export type MeanReversionAnalysis = {
+  model: "sma_deviation_v1";
+  config: MeanReversionConfig;
+  state: MeanReversionState;
+  current: MeanReversionPoint | null;
+  series: MeanReversionPoint[];
+  candlesRequired: number;
+  explanation: string;
+};
+
+export type StrategyContext = {
+  model: "sma_deviation_v1";
+  config: MeanReversionConfig;
+};
+
+export type LegacySessionCheckpoint = {
   schemaVersion: 1;
   revision: number;
   operationId: string;
   executionConfig: ExecutionConfig;
   state: SimulationState;
 };
+
+export type StrategySessionCheckpoint = {
+  schemaVersion: 2;
+  revision: number;
+  operationId: string;
+  executionConfig: ExecutionConfig;
+  strategyContext: StrategyContext;
+  state: SimulationState;
+};
+
+export type SessionCheckpoint =
+  LegacySessionCheckpoint | StrategySessionCheckpoint;
 
 export type SimulationSession = {
   schemaVersion: 1;

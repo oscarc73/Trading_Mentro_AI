@@ -478,6 +478,104 @@ h1 em {
 .session-hero .primary-button {
   margin-top: 18px;
 }
+.strategy-config {
+  max-width: 650px;
+  margin: 28px 0 0;
+  padding: 20px;
+  border: 1px solid var(--line);
+  background: #0d1210;
+}
+.strategy-config legend,
+.strategy-panel-heading > span {
+  color: var(--green);
+  font: 10px var(--font-mono);
+  letter-spacing: 0.14em;
+}
+.strategy-config > p,
+.strategy-explanation,
+.strategy-panel > p,
+.strategy-panel small {
+  color: var(--muted);
+  line-height: 1.6;
+}
+.strategy-config-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 18px;
+}
+.strategy-config-grid label {
+  color: var(--muted);
+  font-size: 12px;
+}
+.strategy-config-grid input {
+  display: block;
+  width: 100%;
+  margin-top: 7px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  background: #080c0a;
+  color: var(--text);
+}
+.formula-preview,
+.strategy-formula {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.strategy-panel {
+  margin-top: 16px;
+  padding: 22px;
+  overflow: hidden;
+}
+.strategy-panel-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+}
+.strategy-panel-heading h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.strategy-below_reference .strategy-panel-heading h2,
+.strategy-above_reference .strategy-panel-heading h2 {
+  color: var(--sand);
+}
+.strategy-near_reference .strategy-panel-heading h2 {
+  color: var(--green);
+}
+.strategy-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0;
+  margin: 20px 0;
+  border: 1px solid var(--line);
+}
+.strategy-metrics > div {
+  min-width: 0;
+  padding: 14px;
+  border-left: 1px solid var(--line);
+}
+.strategy-metrics > div:first-child {
+  border-left: 0;
+}
+.strategy-metrics dt {
+  color: var(--muted);
+  font-size: 10px;
+}
+.strategy-metrics dd {
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+  font: 13px var(--font-mono);
+}
+.strategy-insufficient {
+  padding: 18px;
+  border: 1px solid var(--line);
+}
+.strategy-panel small {
+  display: block;
+  font-size: 10px;
+}
 .history-panel,
 .review-card {
   border: 1px solid var(--line);
@@ -799,6 +897,22 @@ footer {
   }
   .settings-grid {
     grid-template-columns: 1fr;
+  }
+  .strategy-config-grid,
+  .strategy-metrics {
+    grid-template-columns: 1fr;
+  }
+  .strategy-metrics > div,
+  .strategy-metrics > div:first-child {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+  .strategy-metrics > div:first-child {
+    border-top: 0;
+  }
+  .strategy-panel-heading {
+    align-items: start;
+    flex-direction: column;
   }
   .session-home,
   .review-shell {

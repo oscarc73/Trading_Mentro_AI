@@ -1,6 +1,8 @@
 "use client";
 
 import type { Dataset, SimulationSession } from "@/domain/types";
+import { calculateMeanReversion } from "@/domain/mean-reversion";
+import { StrategyPanel } from "./strategy-panel";
 
 const money = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -22,6 +24,13 @@ export function SessionReview({
   const first = dataset.candles[0];
   const last = dataset.candles[state.cursor];
   const fillsByOrder = new Map(state.fills.map((fill) => [fill.orderId, fill]));
+  const strategyAnalysis =
+    session.checkpoint.schemaVersion === 2
+      ? calculateMeanReversion(
+          dataset.candles.slice(0, state.cursor + 1),
+          session.checkpoint.strategyContext.config,
+        )
+      : null;
   return (
     <main className="review-shell">
       <header className="review-header">
@@ -124,6 +133,12 @@ export function SessionReview({
           )}
         </article>
       </section>
+
+      <StrategyPanel
+        analysis={strategyAnalysis}
+        currency={dataset.metadata.currency}
+        legacy={session.checkpoint.schemaVersion === 1}
+      />
 
       <section className="review-card review-wide">
         <span className="eyebrow">ORDERS AND FILLS</span>

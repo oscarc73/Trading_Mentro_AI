@@ -47,3 +47,27 @@
 **Consequences:** Python's built-in `sqlite3` adds no dependency. Checkpoint JSON preserves decimal strings and deterministic identifiers, while indexed summary columns support recent-session ordering. Optimistic revisions reject stale clients, unique operation identifiers make retries idempotent, and dataset/timestamp validation prevents persisted future-candle references. The local database is single-installation data and is excluded from Git.
 
 **Affected files:** Session domain contracts and client API, simulator/session/review UI, FastAPI models/routes/repository/tests, `.gitignore`, README, and Sprint 03 documentation.
+
+## 2026-08-10 — Sprint 04 revealed-only SMA deviation model
+
+**Decision:** Implement the first strategy-research model as `sma_deviation_v1`: an unweighted rolling simple moving average of revealed closes plus signed absolute and percentage deviation. Use `decimal.js` for every strategy calculation, a configurable lookback from 2 to 100, a positive symmetric percentage threshold, and four descriptive states including insufficient data. The model remains read-only and produces no trade instruction or engine action.
+
+**Context:** Sprint 04 begins the strategy-research stage. The platform needs a transparent, deterministic hypothesis that learners can inspect without introducing future-data leakage, performance claims, or automated execution.
+
+**Alternatives:** Bollinger Bands, RSI, multiple indicators, a general strategy registry, and action signals were rejected as premature scope. Native JavaScript numbers were rejected because threshold boundaries and high-precision close fixtures require exact decimal behavior.
+
+**Consequences:** The browser supplies only the revealed candle slice. A linear rolling decimal sum produces chart and panel results. The explanation discloses close-only assumptions and uncertainty. Strategy analysis cannot alter orders, fills, events, positions, trades, costs, P&L, identifiers, or lifecycle transitions.
+
+**Affected files:** Mean-reversion domain contracts/module/tests, chart and strategy UI, session configuration and review, README, and Sprint 04 documentation.
+
+## 2026-08-10 — Backward-compatible strategy checkpoint context
+
+**Decision:** Keep the SQLite persistence schema and session envelope at version `1`, while extending checkpoint JSON to a discriminated version union. Checkpoint schema version `2` requires a normalized, locked `StrategyContext`; checkpoint version `1` remains valid without strategy context. Checkpoint updates must preserve the original schema and exact strategy context.
+
+**Context:** New sessions must resume and review the same strategy inputs, while existing Sprint 03 local sessions must remain readable without a database migration.
+
+**Alternatives:** Migrating every legacy checkpoint was rejected because historical sessions have no authentic strategy configuration to recover. Adding normalized strategy columns to SQLite was rejected because checkpoint JSON is already the versioned restoration boundary.
+
+**Consequences:** New sessions persist `sma_deviation_v1` configuration in checkpoint version `2`. Legacy sessions display that context was not recorded. The API rejects missing, unsupported, or changed version-2 strategy context, and idempotent writes remain unchanged.
+
+**Affected files:** TypeScript session contracts/client, FastAPI models/repository/tests, README, and Sprint 04 documentation.
