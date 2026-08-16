@@ -9,6 +9,9 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from .models import (
+    BacktestCreate,
+    BacktestRecord,
+    BacktestSummary,
     CheckpointWrite,
     Dataset,
     SessionCreate,
@@ -123,6 +126,27 @@ def create_app(
         return repository.abandon(
             session_id, request.expected_revision, request.operation_id
         )
+
+    @api.post(
+        "/api/v1/backtests",
+        response_model=BacktestRecord,
+        response_model_exclude_unset=True,
+        status_code=201,
+    )
+    def create_backtest(request: BacktestCreate) -> BacktestRecord:
+        return repository.create_backtest(request)
+
+    @api.get("/api/v1/backtests", response_model=list[BacktestSummary])
+    def list_backtests() -> list[BacktestSummary]:
+        return repository.list_backtests()
+
+    @api.get(
+        "/api/v1/backtests/{backtest_id}",
+        response_model=BacktestRecord,
+        response_model_exclude_unset=True,
+    )
+    def get_backtest(backtest_id: str) -> BacktestRecord:
+        return repository.get_backtest(backtest_id)
 
     return api
 

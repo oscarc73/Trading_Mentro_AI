@@ -10,6 +10,7 @@ from services.api.app.models import Dataset
 client = TestClient(app)
 
 VALID = {
+    "fingerprint": "a" * 64,
     "metadata": {
         "id": "test",
         "asset": "TEST/USD",

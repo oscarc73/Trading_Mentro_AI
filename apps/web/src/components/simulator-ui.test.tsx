@@ -28,6 +28,7 @@ vi.mock("./candle-chart", () => ({
 }));
 
 const dataset: Dataset = {
+  fingerprint: "a".repeat(64),
   metadata: {
     id: "test",
     asset: "TEST/USD",

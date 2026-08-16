@@ -2,7 +2,7 @@
 
 ## 1. Status
 
-- **State:** Scope approved 2026-08-10; implementation and automated verification complete; manual visual review pending
+- **State:** Accepted by the product owner with documented follow-up on 2026-08-16
 - **Stage:** Stage 2 — Strategy research
 - **Primary owner:** Oscar
 - **Implementation:** Codex
@@ -312,6 +312,6 @@ Scope was approved and implementation authorized by the product owner on 2026-08
 - **Manual verification results:** Production API and web servers started; `/health` and `/` returned HTTP 200. The Codex browser runtime reported no available browser, so interactive desktop/390px, live console, refresh/resume, and screenshot checks were not executed.
 - **Remaining limitations:** The unchecked desktop/keyboard/390px acceptance item requires a connected browser. Backtesting, performance analytics, signals, additional indicators, and live execution remain intentionally excluded.
 - **Documentation updated:** README, project master, status, Sprint 04, decisions, and two dated action summaries.
-- **Review decision:** Pending product-owner review after the remaining visual pass; Sprint 05 has not started.
+- **Review decision:** Accepted by the product owner with follow-up on 2026-08-16. The unchecked desktop/keyboard/390px verification item was explicitly waived for acceptance because no controllable browser was connected. The standalone startup compatibility warning remains separate maintenance work.
 
-Do not mark Sprint 04 accepted until the product owner explicitly accepts the completed outcome.
+Sprint 04 was explicitly accepted by the product owner on 2026-08-16. The unchecked visual verification item remains unchanged so the historical evidence is not overstated.

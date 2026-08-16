@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
   createSession,
@@ -251,6 +252,9 @@ export function SimulatorLoader() {
         >
           {starting ? "Starting…" : "Start new session"}
         </button>
+        <Link className="secondary-button nav-link" href="/backtests">
+          Open Backtest Lab
+        </Link>
       </section>
       <section className="history-panel" aria-labelledby="recent-heading">
         <div className="history-heading">
