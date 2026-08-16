@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sqlite3
 from datetime import UTC, datetime
@@ -8,6 +9,10 @@ from typing import Any
 from pydantic import ValidationError
 
 from .models import (
+    BacktestCreate,
+    BacktestRecord,
+    BacktestResult,
+    BacktestSummary,
     CheckpointWrite,
     Dataset,
     SessionCheckpoint,
@@ -19,7 +24,7 @@ from .models import (
 
 FIXTURE_PATH = Path(__file__).parents[1] / "data" / "btc-usd-1h.json"
 DEFAULT_SESSION_DB_PATH = Path(__file__).parents[1] / "data" / "sessions.sqlite3"
-PERSISTENCE_SCHEMA_VERSION = 1
+PERSISTENCE_SCHEMA_VERSION = 2
 
 
 class SessionRepositoryError(Exception):
@@ -45,7 +50,9 @@ class SessionDataError(SessionRepositoryError):
 def load_approved_dataset(dataset_id: str) -> Dataset:
     if dataset_id != "btc-usd-1h":
         raise KeyError(dataset_id)
-    raw: Any = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
+    fixture_bytes = FIXTURE_PATH.read_bytes()
+    raw: Any = json.loads(fixture_bytes.decode("utf-8"))
+    raw["fingerprint"] = hashlib.sha256(fixture_bytes).hexdigest()
     return Dataset.model_validate(raw)
 
 
@@ -85,6 +92,27 @@ class SQLiteSessionRepository:
                 );
                 CREATE INDEX IF NOT EXISTS sessions_updated_idx
                     ON sessions(updated_at DESC, id ASC);
+                CREATE TABLE IF NOT EXISTS backtests (
+                    id TEXT PRIMARY KEY,
+                    schema_version INTEGER NOT NULL,
+                    dataset_id TEXT NOT NULL,
+                    engine_version TEXT NOT NULL,
+                    lookback INTEGER NOT NULL,
+                    threshold_percent TEXT NOT NULL,
+                    candle_count INTEGER NOT NULL,
+                    trade_count INTEGER NOT NULL,
+                    result_fingerprint TEXT NOT NULL,
+                    record_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS backtest_operations (
+                    backtest_id TEXT NOT NULL,
+                    operation_id TEXT NOT NULL,
+                    PRIMARY KEY (backtest_id, operation_id),
+                    FOREIGN KEY (backtest_id) REFERENCES backtests(id)
+                );
+                CREATE INDEX IF NOT EXISTS backtests_created_idx
+                    ON backtests(created_at DESC, id ASC);
                 """
             )
             version = connection.execute(
@@ -93,6 +121,11 @@ class SQLiteSessionRepository:
             if version is None:
                 connection.execute(
                     "INSERT INTO schema_info(version) VALUES (?)",
+                    (PERSISTENCE_SCHEMA_VERSION,),
+                )
+            elif version["version"] == 1:
+                connection.execute(
+                    "UPDATE schema_info SET version = ?",
                     (PERSISTENCE_SCHEMA_VERSION,),
                 )
             elif version["version"] != PERSISTENCE_SCHEMA_VERSION:
@@ -157,6 +190,96 @@ class SQLiteSessionRepository:
                 (session.id, request.operation_id, 0),
             )
         return session
+
+    def create_backtest(self, request: BacktestCreate) -> BacktestRecord:
+        self._validate_backtest_result(request.result)
+        calculated_fingerprint = self._backtest_fingerprint(request.result)
+        if calculated_fingerprint != request.result_fingerprint:
+            raise SessionDataError("The backtest result fingerprint is invalid.")
+        now = _utc_now()
+        record = BacktestRecord(
+            schemaVersion=1,
+            id=request.id,
+            operationId=request.operation_id,
+            result=request.result,
+            resultFingerprint=request.result_fingerprint,
+            createdAt=now,
+        )
+        with self._transaction() as connection:
+            existing = connection.execute(
+                "SELECT * FROM backtests WHERE id = ?", (request.id,)
+            ).fetchone()
+            if existing is not None:
+                operation = connection.execute(
+                    "SELECT 1 FROM backtest_operations WHERE backtest_id = ? AND operation_id = ?",
+                    (request.id, request.operation_id),
+                ).fetchone()
+                if operation is None:
+                    raise SessionConflictError(
+                        "The backtest record identifier already exists."
+                    )
+                return self._row_to_backtest(existing)
+            result = request.result
+            connection.execute(
+                """
+                INSERT INTO backtests(
+                    id, schema_version, dataset_id, engine_version, lookback,
+                    threshold_percent, candle_count, trade_count,
+                    result_fingerprint, record_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    record.id,
+                    1,
+                    result.dataset.id,
+                    result.engine_version,
+                    result.config.strategy_context.config.lookback,
+                    result.config.strategy_context.config.deviation_threshold_percent,
+                    result.candle_count,
+                    result.trade_count,
+                    record.result_fingerprint,
+                    record.model_dump_json(by_alias=True, exclude_unset=True),
+                    now.isoformat(),
+                ),
+            )
+            connection.execute(
+                "INSERT INTO backtest_operations(backtest_id, operation_id) VALUES (?, ?)",
+                (record.id, record.operation_id),
+            )
+        return record
+
+    def get_backtest(self, backtest_id: str) -> BacktestRecord:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM backtests WHERE id = ?", (backtest_id,)
+            ).fetchone()
+        if row is None:
+            raise SessionNotFoundError("The backtest record does not exist.")
+        record = self._row_to_backtest(row)
+        self._validate_backtest_result(record.result)
+        if self._backtest_fingerprint(record.result) != record.result_fingerprint:
+            raise SessionDataError("The stored backtest fingerprint is invalid.")
+        return record
+
+    def list_backtests(self) -> list[BacktestSummary]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM backtests ORDER BY created_at DESC, id ASC"
+            ).fetchall()
+        return [
+            BacktestSummary(
+                schemaVersion=row["schema_version"],
+                id=row["id"],
+                datasetId=row["dataset_id"],
+                engineVersion=row["engine_version"],
+                lookback=row["lookback"],
+                deviationThresholdPercent=row["threshold_percent"],
+                candleCount=row["candle_count"],
+                tradeCount=row["trade_count"],
+                createdAt=row["created_at"],
+            )
+            for row in rows
+        ]
 
     def get(self, session_id: str) -> SimulationSession:
         with self._connect() as connection:
@@ -364,6 +487,74 @@ class SQLiteSessionRepository:
         self._validate_state(session.checkpoint.state, dataset)
 
     @staticmethod
+    def _backtest_fingerprint(result: BacktestResult) -> str:
+        canonical = json.dumps(
+            result.model_dump(mode="json", by_alias=True, exclude_unset=True),
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _validate_backtest_result(result: BacktestResult) -> None:
+        try:
+            dataset = load_approved_dataset(result.dataset.id)
+        except (KeyError, OSError, json.JSONDecodeError, ValidationError) as error:
+            raise SessionDataError(
+                "The backtest dataset is unavailable or incompatible."
+            ) from error
+        if (
+            result.dataset.fingerprint != dataset.fingerprint
+            or result.dataset.generated_at != dataset.metadata.generated_at
+            or result.dataset.candle_count != len(dataset.candles)
+        ):
+            raise SessionDataError("The backtest dataset fingerprint is incompatible.")
+        timestamps = [candle.timestamp for candle in dataset.candles]
+        timestamped_items = [
+            *((signal.candle_index, signal.timestamp) for signal in result.signals),
+            *((order.candle_index, order.submitted_at) for order in result.orders),
+            *((fill.candle_index, fill.timestamp) for fill in result.fills),
+            *((event.candle_index, event.timestamp) for event in result.events),
+        ]
+        for candle_index, timestamp in timestamped_items:
+            if candle_index >= len(dataset.candles):
+                raise SessionDataError(
+                    "The backtest references a candle outside the dataset."
+                )
+            if timestamp != timestamps[candle_index]:
+                raise SessionDataError(
+                    "A backtest timestamp does not match the approved dataset."
+                )
+        fill_by_id = {fill.id: fill for fill in result.fills}
+        signal_by_id = {signal.id: signal for signal in result.signals}
+        for trade in result.trades:
+            entry_signal = signal_by_id[trade.entry_signal_id]
+            if entry_signal.action != f"open_{trade.direction}":
+                raise SessionDataError(
+                    "A trade direction does not match its entry signal."
+                )
+            entry_fill = fill_by_id[trade.entry_fill_id]
+            if entry_fill.candle_index != entry_signal.execution_candle_index:
+                raise SessionDataError(
+                    "A trade entry did not fill on the queued candle."
+                )
+            if trade.exit_reason == "strategy":
+                if trade.exit_signal_id is None:
+                    raise SessionDataError("A strategy exit is missing its signal.")
+                exit_signal = signal_by_id[trade.exit_signal_id]
+                exit_fill = fill_by_id[trade.exit_fill_id]
+                if (
+                    exit_signal.action != f"close_{trade.direction}"
+                    or exit_fill.candle_index != exit_signal.execution_candle_index
+                ):
+                    raise SessionDataError(
+                        "A trade exit did not fill on the queued candle."
+                    )
+            elif trade.exit_signal_id is not None:
+                raise SessionDataError("An end-of-data exit cannot reference a signal.")
+
+    @staticmethod
     def _row_to_session(row: sqlite3.Row) -> SimulationSession:
         try:
             return SimulationSession.model_validate(
@@ -381,6 +572,13 @@ class SQLiteSessionRepository:
             )
         except (json.JSONDecodeError, ValidationError) as error:
             raise SessionDataError("The stored session state is invalid.") from error
+
+    @staticmethod
+    def _row_to_backtest(row: sqlite3.Row) -> BacktestRecord:
+        try:
+            return BacktestRecord.model_validate(json.loads(row["record_json"]))
+        except (json.JSONDecodeError, ValidationError) as error:
+            raise SessionDataError("The stored backtest record is invalid.") from error
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path, timeout=5)

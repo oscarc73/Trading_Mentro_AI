@@ -8,6 +8,7 @@ export type Candle = {
 };
 
 export type Dataset = {
+  fingerprint: string;
   metadata: {
     id: string;
     asset: string;
@@ -32,7 +33,7 @@ export type ExecutionConfig = {
 };
 
 export type ExecutionAssumptions = ExecutionConfig & {
-  fillPriceRule: "current candle close";
+  fillPriceRule: "current candle close" | "next candle open";
   spreadBps: "0";
   leverage: false;
 };
@@ -221,3 +222,100 @@ export type SessionSummary = {
 
 export type PersistenceState =
   "loading" | "saving" | "saved" | "failed" | "offline";
+
+export type MeanReversionRuleConfig = {
+  model: "mean_reversion_threshold_v1";
+  entrySignalTiming: "candle_close";
+  signalFillTiming: "next_candle_open";
+  finalPositionPolicy: "close_at_final_candle_close";
+};
+
+export type BacktestConfig = {
+  strategyContext: StrategyContext;
+  rules: MeanReversionRuleConfig;
+  executionConfig: ExecutionConfig;
+};
+
+export type BacktestDatasetReference = {
+  id: string;
+  generatedAt: string;
+  candleCount: number;
+  fingerprint: string;
+};
+
+export type BacktestSignalAction =
+  "open_long" | "open_short" | "close_long" | "close_short";
+
+export type BacktestSignal = {
+  id: string;
+  candleIndex: number;
+  timestamp: string;
+  state: Exclude<MeanReversionState, "insufficient_data">;
+  action: BacktestSignalAction;
+  executionCandleIndex: number | null;
+  status: "executed" | "ignored_end_of_data";
+};
+
+export type BacktestTrade = Trade & {
+  id: string;
+  entrySignalId: string;
+  exitSignalId: string | null;
+  exitReason: "strategy" | "end_of_data";
+};
+
+export type BacktestEvent = {
+  id: string;
+  sequence: number;
+  type:
+    | "signal_created"
+    | "position_opened"
+    | "position_closed"
+    | "end_of_data_close";
+  candleIndex: number;
+  timestamp: string;
+  message: string;
+  signalId?: string;
+  orderId?: string;
+  fillId?: string;
+  tradeId?: string;
+};
+
+export type BacktestResult = {
+  schemaVersion: 1;
+  engineVersion: "mean_reversion_backtest_v1";
+  dataset: BacktestDatasetReference;
+  config: BacktestConfig;
+  signals: BacktestSignal[];
+  orders: Order[];
+  fills: ExecutionFill[];
+  trades: BacktestTrade[];
+  events: BacktestEvent[];
+  candleCount: number;
+  tradeCount: number;
+  forcedExitCount: number;
+  totalGrossPnl: string;
+  totalFees: string;
+  totalSlippageCost: string;
+  totalNetPnl: string;
+};
+
+export type BacktestRecord = {
+  schemaVersion: 1;
+  id: string;
+  operationId: string;
+  result: BacktestResult;
+  resultFingerprint: string;
+  createdAt: string;
+};
+
+export type BacktestSummary = {
+  schemaVersion: 1;
+  id: string;
+  datasetId: string;
+  engineVersion: "mean_reversion_backtest_v1";
+  lookback: number;
+  deviationThresholdPercent: string;
+  candleCount: number;
+  tradeCount: number;
+  createdAt: string;
+};

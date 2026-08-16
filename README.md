@@ -1,6 +1,6 @@
 # Trading Mentor AI
 
-An educational historical-market simulator. Sprint 04 adds a transparent mean-reversion research model to the reliable local sessions delivered in Sprint 03. Users can inspect a revealed-only simple moving average and exact price deviation without receiving automated trade instructions. All results and hypotheses are hypothetical; no real-money execution is available.
+An educational historical-market simulator and deterministic strategy-research platform. Sprint 05 adds an auditable Backtest Lab for the transparent mean-reversion model while preserving the reliable interactive sessions from Sprints 01–04. All results and hypotheses are hypothetical; no real-money execution is available.
 
 ## Requirements
 
@@ -31,9 +31,27 @@ Terminal 2:
 pnpm.cmd --filter @trading-mentor/web dev
 ```
 
-Open `http://localhost:3000`. The API health endpoint is `http://localhost:8000/health`, and the approved dataset endpoint is `http://localhost:8000/api/v1/datasets/btc-usd-1h`.
+Open `http://localhost:3000` for the simulator or `http://localhost:3000/backtests` for the Backtest Lab. The API health endpoint is `http://localhost:8000/health`, and the approved dataset endpoint is `http://localhost:8000/api/v1/datasets/btc-usd-1h`.
 
 The API creates `services/api/data/sessions.sqlite3` for local session history. The file is ignored by Git. Sessions belong to this local installation; accounts and cloud synchronization are not included.
+
+## Sprint 05 Backtest Lab
+
+The Backtest Lab applies `mean_reversion_threshold_v1` to the complete approved dataset. A signal is evaluated at candle close and fills only at the next candle open. One long or short position may be open; an unresolved final position closes at the final candle close and is labeled `end_of_data`. Quantity, fee basis points, and adverse-slippage basis points are explicit; spread is zero and leverage is disabled.
+
+Each result includes normalized inputs, dataset SHA-256 identity, chronological signals, orders, fills, completed trades, audit events, sample size, trade count, and exact reconciliation totals. The API stores the result as an immutable SQLite record with an idempotent operation identifier and canonical result SHA-256 fingerprint. Saved records can be reopened and rerun for equality verification.
+
+The totals are engine-reconciliation evidence, not performance analysis. Win rate, drawdown, expectancy, optimization, date selection, additional strategies, live data, and broker execution are intentionally excluded.
+
+### Backtest API
+
+```text
+POST /api/v1/backtests
+GET  /api/v1/backtests
+GET  /api/v1/backtests/{backtest_id}
+```
+
+There are no update or delete endpoints. The API validates the versioned engine/rule contracts, approved dataset fingerprint, next-candle timing, execution links, sequential position lifecycle, totals, and result fingerprint before accepting a record.
 
 ## Sprint 04 mean-reversion hypothesis
 

@@ -20,6 +20,7 @@ vi.mock("./simulator", () => ({
 }));
 
 const dataset: Dataset = {
+  fingerprint: "a".repeat(64),
   metadata: {
     id: "btc-usd-1h",
     asset: "BTC/USD",

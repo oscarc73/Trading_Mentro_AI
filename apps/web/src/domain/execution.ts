@@ -70,6 +70,7 @@ function nonNegativeRate(
 
 export function normalizeExecutionConfig(
   config: ExecutionConfig,
+  fillPriceRule: ExecutionAssumptions["fillPriceRule"] = "current candle close",
 ): ExecutionAssumptions {
   const quantity = positiveDecimal(
     config.quantity,
@@ -92,17 +93,17 @@ export function normalizeExecutionConfig(
     quantity: quantity.toString(),
     feeBps: feeBps.toString(),
     slippageBps: slippageBps.toString(),
-    fillPriceRule: "current candle close",
+    fillPriceRule,
     spreadBps: "0",
     leverage: false,
   };
 }
 
-function candleClose(candle: Candle): Decimal {
+function candlePrice(candle: Candle, field: "open" | "close"): Decimal {
   return positiveDecimal(
-    candle.close,
+    candle[field],
     "INVALID_PRICE",
-    "Current candle close must be a positive finite decimal value.",
+    `Candle ${field} must be a positive finite decimal value.`,
   );
 }
 
@@ -130,6 +131,7 @@ function createMarketExecution({
   assumptions,
   orderSequence,
   fillSequence,
+  referencePriceField = "close",
 }: {
   direction: Direction;
   intent: OrderIntent;
@@ -138,9 +140,10 @@ function createMarketExecution({
   assumptions: ExecutionAssumptions;
   orderSequence: number;
   fillSequence: number;
+  referencePriceField?: "open" | "close";
 }): { order: Order; fill: ExecutionFill } {
   const side = orderSide(direction, intent);
-  const referencePrice = candleClose(candle);
+  const referencePrice = candlePrice(candle, referencePriceField);
   const quantity = positiveDecimal(
     assumptions.quantity,
     "INVALID_QUANTITY",
@@ -258,6 +261,8 @@ export function openPosition({
   config,
   orderSequence,
   fillSequence,
+  referencePriceField = "close",
+  fillPriceRule = "current candle close",
 }: {
   direction: Direction;
   candle: Candle;
@@ -265,8 +270,10 @@ export function openPosition({
   config: ExecutionConfig;
   orderSequence: number;
   fillSequence: number;
+  referencePriceField?: "open" | "close";
+  fillPriceRule?: ExecutionAssumptions["fillPriceRule"];
 }) {
-  const assumptions = normalizeExecutionConfig(config);
+  const assumptions = normalizeExecutionConfig(config, fillPriceRule);
   const { order, fill } = createMarketExecution({
     direction,
     intent: "open",
@@ -275,6 +282,7 @@ export function openPosition({
     assumptions,
     orderSequence,
     fillSequence,
+    referencePriceField,
   });
   const position: Position = {
     direction,
@@ -297,6 +305,7 @@ export function closePosition({
   assumptions,
   orderSequence,
   fillSequence,
+  referencePriceField = "close",
 }: {
   position: Position;
   candle: Candle;
@@ -304,6 +313,7 @@ export function closePosition({
   assumptions: ExecutionAssumptions;
   orderSequence: number;
   fillSequence: number;
+  referencePriceField?: "open" | "close";
 }): { order: Order; fill: ExecutionFill; trade: Trade } {
   const { order, fill } = createMarketExecution({
     direction: position.direction,
@@ -313,6 +323,7 @@ export function closePosition({
     assumptions,
     orderSequence,
     fillSequence,
+    referencePriceField,
   });
   const grossPnl = calculateGrossPnl(
     position.direction,
@@ -357,7 +368,7 @@ export function previewPosition(
   assumptions: ExecutionAssumptions,
 ): { grossPnl: string; estimatedNetPnl: string; estimatedExitPrice: string } {
   const exitSide = orderSide(position.direction, "close");
-  const referencePrice = candleClose(candle);
+  const referencePrice = candlePrice(candle, "close");
   const exitPrice = executionPrice(
     exitSide,
     referencePrice,

@@ -1,4 +1,7 @@
 import type {
+  BacktestRecord,
+  BacktestResult,
+  BacktestSummary,
   Dataset,
   ExecutionConfig,
   SessionSummary,
@@ -45,6 +48,37 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function fetchDataset(datasetId = "btc-usd-1h"): Promise<Dataset> {
   return request<Dataset>(`/datasets/${datasetId}`);
+}
+
+export function listBacktests(): Promise<BacktestSummary[]> {
+  return request<BacktestSummary[]>("/backtests");
+}
+
+export function getBacktest(backtestId: string): Promise<BacktestRecord> {
+  return request<BacktestRecord>(`/backtests/${backtestId}`);
+}
+
+export function createBacktest({
+  id,
+  operationId,
+  result,
+  resultFingerprint,
+}: {
+  id: string;
+  operationId: string;
+  result: BacktestResult;
+  resultFingerprint: string;
+}): Promise<BacktestRecord> {
+  return request<BacktestRecord>("/backtests", {
+    method: "POST",
+    body: JSON.stringify({
+      schemaVersion: 1,
+      id,
+      operationId,
+      result,
+      resultFingerprint,
+    }),
+  });
 }
 
 export function listSessions(): Promise<SessionSummary[]> {

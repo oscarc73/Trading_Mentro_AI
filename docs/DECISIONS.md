@@ -71,3 +71,23 @@
 **Consequences:** New sessions persist `sma_deviation_v1` configuration in checkpoint version `2`. Legacy sessions display that context was not recorded. The API rejects missing, unsupported, or changed version-2 strategy context, and idempotent writes remain unchanged.
 
 **Affected files:** TypeScript session contracts/client, FastAPI models/repository/tests, README, and Sprint 04 documentation.
+
+## 2026-08-16 — Sprint 05 causal backtest execution model
+
+**Decision:** Version the first automated rule set as `mean_reversion_threshold_v1`. Evaluate the existing `sma_deviation_v1` state at candle close, queue eligible entries/exits, and execute them only at the next candle open. Allow one fixed-quantity long or short position, prohibit same-open reversal, and close remaining exposure at the final candle close with `end_of_data` evidence.
+
+**Context:** Backtests must reuse the approved research state and Sprint 02 financial formulas without look-ahead or hidden assumptions.
+
+**Consequences:** The engine is framework-independent and deterministic. Fees and adverse slippage use the shared decimal-safe execution primitives; spread remains zero and leverage remains disabled. Results expose reconciliation totals only, while performance and risk analytics remain Sprint 06 scope.
+
+**Affected files:** Backtest domain/types/tests, shared execution primitives, Backtest Lab UI, and Sprint 05 documentation.
+
+## 2026-08-16 — Immutable fingerprinted backtest records
+
+**Decision:** Bind each backtest result to the approved dataset's SHA-256 fingerprint and store an immutable canonical-result SHA-256 fingerprint. Add SQLite persistence schema version `2` with append-only `backtests` and idempotent `backtest_operations` records, plus create/list/detail APIs.
+
+**Context:** Reopening and rerunning historical research must detect dataset or result drift without changing legacy session checkpoint compatibility.
+
+**Consequences:** The dataset endpoint now exposes a stable content fingerprint. Existing schema-version-1 databases migrate additively to version `2`; session rows and checkpoint contracts remain unchanged. The API rejects incompatible dataset identity, invalid timing/links/lifecycle/totals, tampered fingerprints, and conflicting identifiers. No backtest update or delete operation exists.
+
+**Affected files:** FastAPI dataset/models/repository/routes/tests, web API client/contracts, README, and Sprint 05 documentation.
